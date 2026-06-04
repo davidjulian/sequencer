@@ -8,31 +8,54 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <nav class="tool-nav" aria-label="Sequencer navigation">
+        <a href="index.html" class="button nav-button">Home</a>
+    </nav>
 
+    <main id="main-content">
     <h1>Sequencer - Analyze</h1>
+    <p id="analysisStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
 
-    <div>
-        <label for="reference-file">Reference File:</label>
-        <input type="file" id="reference-file" accept=".seq">
+    <div class="file-panel">
+        <h2 class="file-panel-title">Reference File</h2>
+        <input type="file" id="reference-file" class="visually-hidden" accept=".seq" tabindex="-1" aria-hidden="true">
+        <div id="referenceFileDropZone" class="drop-zone" role="button" tabindex="0" aria-controls="reference-file" aria-label="Choose instructor reference file" aria-describedby="referenceFileStatus">
+            <strong>Reference File</strong>
+            <span>Drop instructor reference .seq file here or choose file</span>
+        </div>
+        <small id="referenceFileStatus" class="drop-status" data-drop-status role="status" aria-live="polite">No file selected</small>
     </div>
-    <BR>
-    <div>
-        <label for="sequence-files">Student Sequence Files:</label>
-        <input type="file" id="sequence-files" multiple>
+    <div class="file-panel">
+        <h2 class="file-panel-title">Student Sequence Files</h2>
+        <input type="file" id="sequence-files" class="visually-hidden" multiple accept=".seq" tabindex="-1" aria-hidden="true">
+        <div id="studentFilesDropZone" class="drop-zone" role="button" tabindex="0" aria-controls="sequence-files" aria-label="Choose student sequence files" aria-describedby="studentFilesStatus">
+            <strong>Student Files</strong>
+            <span>Drop student .seq files here or choose files</span>
+        </div>
+        <small id="studentFilesStatus" class="drop-status" data-drop-status role="status" aria-live="polite">No files selected</small>
+        <div class="tool-actions">
+            <button id="clear-student-files-button" type="button" onclick="clearStudentFiles()">Clear Student Files</button>
+        </div>
     </div>
     
-    <BR>
-    <button onclick="processFiles()">Process</button>
-    <button onclick="saveResultsAsCSV()">Save Results as CSV</button>
+    <div class="tool-actions" aria-label="Analyze actions">
+        <button id="process-button" onclick="processFiles()">Process</button>
+        <button id="save-results-button" onclick="saveResultsAsCSV()" disabled>Save Results as CSV</button>
+        <button id="clear-all-button" type="button" onclick="clearAllAnalysis()">Clear All</button>
+    </div>
 
-    <h2>Results</h2>
-    <ul id="results-list"></ul>
+    <h2 id="results-heading">Results</h2>
+    <ul id="results-list" aria-labelledby="results-heading"></ul>
+    </main>
 
+    <script src="sequencer_ui.js"></script>
+    <script src="sequencer_core.js"></script>
     <script src="analyze_tool.js"></script>
     
     <footer>
-        <p>&copy; 2024 David Julian, University of Florida</p>
-        <p><a href="Terms_of_Service.html" target="_blank">Terms of Service</a></p>
+        <p>&copy; 2026 David Julian, University of Florida</p>
+        <p><button type="button" class="link-button" onclick="SequencerUI.openAboutDialog()">About</button> | <button type="button" class="link-button" onclick="SequencerUI.openTermsDialog()">Terms of Service</button></p>
     </footer>
     
 </body>
