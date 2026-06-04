@@ -6,43 +6,35 @@
     <title>Sequencer Tool</title>
     <link rel="stylesheet" href="styles.css">
     <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-            text-align: center;
-            padding-top: 50px;
-        }
-        .button {
-            padding: 10px 20px;
-            margin: 10px;
-            font-size: 18px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
         .instructor, .student {
             display: none;
         }
         .show {
-            display: block;
+            display: grid;
         }
     </style>
 </head>
-<body>
+<body class="home-page">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <main id="main-content">
     <h1>Welcome to the Sequencer Tool</h1>
     <p>Are you a student or an instructor?</p>
-    <button id="studentBtn" class="button">Student</button>
-    <button id="instructorBtn" class="button">Instructor</button>
+    <div class="home-actions">
+        <button id="studentBtn" class="button" type="button">Student</button>
+        <button id="instructorBtn" class="button" type="button" aria-expanded="false" aria-controls="instructorTools">Instructor</button>
+    </div>
 
     <div class="student">
         <!-- Removed the "Go to Student Tool" button as it's now redundant -->
     </div>
 
-    <div class="instructor">
+    <div id="instructorTools" class="instructor home-actions" aria-label="Instructor tools">
         <a href="build_tool.html" class="button">Go to Build Tool</a>
         <a href="analyze_tool.html" class="button">Go to Analyze Tool</a>
     </div>
+    </main>
 
+    <script src="sequencer_ui.js"></script>
     <script>
         document.getElementById('studentBtn').addEventListener('click', function() {
             window.location.href = 'student_tool.html'; // Direct navigation to student tool
@@ -50,12 +42,13 @@
 
         document.getElementById('instructorBtn').addEventListener('click', function() {
             document.querySelector('.instructor').classList.add('show');
+            this.setAttribute('aria-expanded', 'true');
         });
     </script>
 
 <footer>
-    <p>&copy; 2024 David Julian, University of Florida</p>
-    <p><a href="Terms_of_Service.html" target="_blank">Terms of Service</a></p>
+    <p>&copy; 2026 David Julian, University of Florida</p>
+    <p><button type="button" class="link-button" onclick="SequencerUI.openAboutDialog()">About</button> | <button type="button" class="link-button" onclick="SequencerUI.openTermsDialog()">Terms of Service</button></p>
 </footer>
 
 </body>

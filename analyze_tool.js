@@ -1,230 +1,330 @@
-// ** This app compares the element order in a test sequence to the element order in a reference sequence.
-// ** The first analysis algorithm focuses on matching adjacent pairs of elements in the test and reference sequences:
-// ** 1) If an adjacent pair is in the reference sequence, add 1 point.
-// ** 2) If an adjacent pair is reversed from the reference sequence, do not add or subtract points.
-// ** 3) If an adjacent pair is not in the reference sequence and is not reversed, subtract 1 point. 
-// ** 4) Calculate the maximum number of points that can be earned. This is (seg.length - 1) points.
-// ** 5) Add the maximum number of points to the number of points earned and divide by 2 times the maximum number of points.
-// ** 6) Multiply by 100 to get a percentage of correctness.
-// ** The second analysis uses Spearman's Rho to determine the correlation between the test and reference sequences:
-// ** 1) Rank the elements in the reference and test sequences from 1 to n.
-// ** 2) Calculate Spearman's Rho. If the sequences are of unequal length, Spearman's Rho cannot be calculated.
-// ** 3) Adjust Spearman's Rho to a scale of 0 to 100.
-// ** The app then reports the following scores:
-// ** 1) Points: The number of points earned by the adjacent pair algorithm.
-// ** 2) Adjacent Pair Correctness: The percentage of points earned out of the maximum number of points possible.
-// ** 3) Spearman's Rho: The correlation between the test and reference sequences.
-// ** 4) Geometric Mean Score: The geometric mean of the adjacent pair correctness and Spearman's Rho.
-// ** 5) Harmonic Mean Score: The harmonic mean of the adjacent pair correctness and Spearman's Rho.
-// ** 6) Min-Max Normalized Score: The min-max normalized score of the adjacent pair correctness and Spearman's Rho.
-// ** The app then prompts for a new test sequence and repeats the analysis.
+// Compares student sequence files against a reference sequence file and exports scores.
 
 let allResults = [];
-
-// Global variable to store the root name of the reference file
 let referenceFileNameRoot = '';
+let isProcessing = false;
 
-function analyzeSequence(referenceData, sequence) {
-    let reference = referenceData.sequence;
-    const startingElements = referenceData.startingElements;
-    const endingElements = referenceData.endingElements;
-    const distractors = referenceData.distractors;
+document.addEventListener("DOMContentLoaded", function() {
+    SequencerUI.setupDropZone({
+        dropZoneId: "referenceFileDropZone",
+        inputId: "reference-file"
+    });
+    SequencerUI.setupDropZone({
+        dropZoneId: "studentFilesDropZone",
+        inputId: "sequence-files",
+        multiple: true
+    });
 
-    let points = 0;
+    document.getElementById("reference-file").addEventListener("change", function() {
+        clearAnalysisResults("Reference file selection changed. Previous results cleared.");
+    });
+    document.getElementById("sequence-files").addEventListener("change", function() {
+        clearAnalysisResults("Student file selection changed. Previous results cleared.");
+    });
+    updateAnalyzeButtons();
+});
 
-    // Before starting the analysis, remove the fixed elements from the reference and sequence arrays
-    reference = reference.filter(item => !startingElements.includes(item) && !endingElements.includes(item));
-    sequence = sequence.filter(item => !startingElements.includes(item) && !endingElements.includes(item));
-
-    // Take an array of numbers and return an array of pairs, where each pair is made up of two adjacent elements in the original array.
-    const extractPairs = (seq) => {
-        let pairs = [];
-        for (let i = 0; i < seq.length - 1; i++) {
-            pairs.push(seq[i] + seq[i + 1]);
-        }
-        return pairs;
-    };
-    
-    function getRanks(sequence) {
-        const sorted = [...sequence].sort((a, b) => a.localeCompare(b));
-        return sequence.map(element => sorted.indexOf(element) + 1);
-    }
-    
-    function calculateSpearman(reference, test) {
-        if (reference.length !== test.length) {
-            return NaN;  // or return '-1', or whatever value you choose
-        }const referenceRanks = getRanks(reference);
-        const testRanks = getRanks(test);
-    
-        const n = reference.length;
-    
-        // Calculate squared differences between ranks
-        const squaredDifferences = referenceRanks.map((rank, i) => {
-            const difference = rank - testRanks[i];
-            return difference * difference;
-        });
-    
-        // Sum of squared differences
-        const sumOfSquaredDifferences = squaredDifferences.reduce((a, b) => a + b, 0);
-    
-        // Calculate rho
-        const rho = 1 - (6 * sumOfSquaredDifferences) / (n * (Math.pow(n, 2) - 1));
-        return rho.toFixed(2);  // Return result rounded to 2 decimal places
+async function processFiles() {
+    if (isProcessing) {
+        return;
     }
 
-    const referencePairs = extractPairs(reference);
-    console.log('Reference Pairs:', referencePairs);
-    
-    const testPairs = extractPairs(sequence);
-    console.log('Test Pairs:', testPairs);
-
-    for (let pair of testPairs) {
-        // Check if the current pair is included in the "referencePairs" array
-        console.log('Evaluating Pair:', pair);
-
-        if (referencePairs.includes(pair)) {
-            // If it is, increment the "points" variable
-            console.log('Pair Correct');
-            points++;
-        } else {
-            // If it's not, check if the reversed pair is included in the "referencePairs" array
-            let reversedPair = pair[1] + pair[0];
-            if (referencePairs.includes(reversedPair)) {
-                // If it is, do not add or subtract points
-                console.log('Pair Reversed');
-                points += 0;
-            } else {
-                // If it's not, subtract 1 from the "points" variable
-                console.log('Pair Incorrect');
-                points--;
-            }
-        }
-    }        
- 
-    const maxPoints = reference.length - 1; 
-    const correctness = (points + maxPoints) / (2 * maxPoints) * 100;
-    const spearmanRho = calculateSpearman(reference, sequence);
-    
-    const maxCorrectness = 100;  // Correctness as a percentage
-    const maxSpearman = 1;  // Spearman's Rho ranges from -1 to 1
-
-    // Adjusting Spearman's rho to a scale of 0 to 100
-    const adjustedSpearmanRho = (parseFloat(spearmanRho) + 1) / 2;
-    const adjustedSpearmanPercentage = adjustedSpearmanRho * 100;
-
-    // Calculating combined scores
-    const geometricMeanFraction = Math.sqrt((correctness / 100) * adjustedSpearmanRho);
-    const geometricMean = geometricMeanFraction * 100;
-    const harmonicMean = (2 * correctness * adjustedSpearmanPercentage) / (correctness + adjustedSpearmanPercentage);
-    const minMaxNormalized = (correctness + adjustedSpearmanPercentage) / 2;
-
-    // Return results at the end
-    return {
-        points: points,
-        correctness: correctness.toFixed(2),
-        spearmanRho: spearmanRho,
-        geometricMean: geometricMean.toFixed(2),
-        harmonicMean: harmonicMean.toFixed(2),
-        minMaxNormalized: minMaxNormalized.toFixed(2)
-    };
-}
-
-function processFiles() {
     const referenceFile = document.getElementById('reference-file').files[0];
-    const sequenceFiles = document.getElementById('sequence-files').files;
+    const sequenceFiles = Array.from(document.getElementById('sequence-files').files);
 
     if (!referenceFile || sequenceFiles.length === 0) {
         alert('Please select the reference and student files before processing.');
         return;
     }
 
-    // Extract and store the root name of the reference file
-    referenceFileNameRoot = referenceFile.name.split('_')[0];
+    setProcessingState(true);
+    allResults = [];
+    const resultsList = document.getElementById('results-list');
+    resultsList.replaceChildren();
+    resultsList.setAttribute('aria-busy', 'true');
+    announceAnalysisStatus(`Processing ${sequenceFiles.length} student ${sequenceFiles.length === 1 ? "file" : "files"}.`);
 
-    referenceFile.text().then(referenceContent => {
-        const referenceData = JSON.parse(referenceContent);
+    try {
+        referenceFileNameRoot = getReferenceFileNameRoot(referenceFile.name);
+        const referenceData = SequencerCore.normalizeReferenceData(
+            SequencerCore.parseJson(await referenceFile.text(), referenceFile.name)
+        );
 
-        for (let i = 0; i < sequenceFiles.length; i++) {
-            sequenceFiles[i].text().then(sequenceContent => {
-                const sequence = JSON.parse(sequenceContent);
-                const result = analyzeSequence(referenceData, sequence);
-    
-                // Begin the merged display logic:
-                console.log(`Results for ${sequenceFiles[i].name}:`);
-                console.log(`Points: ${result.points}`);
-                console.log(`Adjacent Pair Correctness: ${result.correctness}%`);
-                if (isNaN(result.spearmanRho)) {
-                    console.log("Spearman's Rho cannot be computed for sequences of unequal lengths.");
-                } else {
-                    console.log(`Spearman's Rho: ${result.spearmanRho}`);
-                    console.log(`Geometric Mean Score: ${result.geometricMean}%`);
-                    console.log(`Harmonic Mean Score: ${result.harmonicMean}%`);
-                    console.log(`Min-Max Normalized Score: ${result.minMaxNormalized}%`);
-                }
-                console.log('----------------------------');
-    
-                // Display in the UI:
-                const resultList = document.getElementById("results-list");
-                const listItem = document.createElement("li");
-                listItem.innerHTML = `
-                    <strong>Results for ${sequenceFiles[i].name}:</strong><br>
-                    Points: ${result.points}<br>
-                    Adjacent Pair Correctness: ${result.correctness}%<br>
-                    ${isNaN(result.spearmanRho) 
-                        ? "Spearman's Rho cannot be computed for sequences of unequal lengths."
-                        : `
-                            Spearman's Rho: ${result.spearmanRho}<br>
-                            Geometric Mean Score: ${result.geometricMean}%<br>
-                            Harmonic Mean Score: ${result.harmonicMean}%<br>
-                            Min-Max Normalized Score: ${result.minMaxNormalized}%
-                        `
-                    }
-                `;
-                resultList.appendChild(listItem);
-                allResults.push({
-                    filename: sequenceFiles[i].name,
-                    points: result.points,
-                    correctness: result.correctness,
-                    spearmanRho: isNaN(result.spearmanRho) ? "N/A" : result.spearmanRho,
-                    geometricMean: result.geometricMean,
-                    harmonicMean: result.harmonicMean,
-                    minMaxNormalized: result.minMaxNormalized
-                });
-            });
-        }
-    });
+        const results = await Promise.all(sequenceFiles.map(file => processStudentFile(file, referenceData)));
+        results.forEach(addResultToUI);
+        allResults = results.map(convertResultToRow);
+        const errorCount = results.filter(result => result.error).length;
+        announceAnalysisStatus(
+            `Processing complete. ${results.length - errorCount} ${results.length - errorCount === 1 ? "file" : "files"} scored`
+            + `${errorCount > 0 ? ` and ${errorCount} ${errorCount === 1 ? "file" : "files"} reported errors` : ""}.`
+        );
+    } catch (error) {
+        console.error("Error processing files:", error);
+        announceAnalysisStatus(`Processing failed. ${error.message}`);
+        alert(error.message);
+    } finally {
+        resultsList.setAttribute('aria-busy', 'false');
+        setProcessingState(false);
+    }
+}
+
+async function processStudentFile(file, referenceData) {
+    try {
+        const sequence = SequencerCore.normalizeStudentSequence(
+            SequencerCore.parseJson(await file.text(), file.name)
+        );
+        const result = SequencerCore.analyzeSequence(referenceData, sequence);
+
+        return {
+            filename: file.name,
+            result
+        };
+    } catch (error) {
+        console.error(`Error processing ${file.name}:`, error);
+        return {
+            filename: file.name,
+            error: error.message
+        };
+    }
+}
+
+function setProcessingState(processing) {
+    isProcessing = processing;
+
+    const processButton = document.getElementById('process-button');
+    const saveButton = document.getElementById('save-results-button');
+    const clearStudentFilesButton = document.getElementById('clear-student-files-button');
+    const clearAllButton = document.getElementById('clear-all-button');
+
+    if (processButton) {
+        processButton.disabled = processing;
+        processButton.textContent = processing ? 'Processing...' : 'Process';
+    }
+
+    if (saveButton) {
+        saveButton.disabled = processing || allResults.length === 0;
+    }
+
+    if (clearStudentFilesButton) {
+        clearStudentFilesButton.disabled = processing;
+    }
+
+    if (clearAllButton) {
+        clearAllButton.disabled = processing;
+    }
+}
+
+function updateAnalyzeButtons() {
+    setProcessingState(isProcessing);
+}
+
+function clearAnalysisResults(message) {
+    allResults = [];
+    document.getElementById('results-list').replaceChildren();
+    updateAnalyzeButtons();
+
+    if (message) {
+        announceAnalysisStatus(message);
+    }
+}
+
+function clearStudentFiles() {
+    if (isProcessing) {
+        return;
+    }
+
+    SequencerUI.clearFileSelection("sequence-files", "studentFilesDropZone", "No files selected");
+    clearAnalysisResults("Student files and results cleared. Reference file retained.");
+}
+
+function clearAllAnalysis() {
+    if (isProcessing) {
+        return;
+    }
+
+    SequencerUI.clearFileSelection("reference-file", "referenceFileDropZone", "No file selected");
+    SequencerUI.clearFileSelection("sequence-files", "studentFilesDropZone", "No files selected");
+    referenceFileNameRoot = "";
+    clearAnalysisResults("Reference file, student files, and results cleared.");
+}
+
+function announceAnalysisStatus(message) {
+    const status = document.getElementById("analysisStatus");
+
+    if (!status) {
+        return;
+    }
+
+    status.textContent = "";
+    window.setTimeout(() => {
+        status.textContent = message;
+    }, 10);
+}
+
+function getReferenceFileNameRoot(filename) {
+    return filename
+        .replace(/_reference\.seq$/i, '')
+        .replace(/\.seq$/i, '') || 'sequencer';
+}
+
+function addResultToUI(fileResult) {
+    const resultList = document.getElementById("results-list");
+    const listItem = document.createElement("li");
+    const title = document.createElement("strong");
+
+    title.textContent = `Results for ${fileResult.filename}:`;
+    listItem.appendChild(title);
+    listItem.appendChild(document.createElement("br"));
+
+    if (fileResult.error) {
+        appendLine(listItem, "Error", fileResult.error);
+        resultList.appendChild(listItem);
+        return;
+    }
+
+    const result = fileResult.result;
+    appendLine(listItem, "Item Flags", formatItemFlags(result.itemComparison));
+    appendLine(listItem, "Points", `${result.points} / ${result.maxPoints}`);
+    appendLine(listItem, "Adjacent Pair Correctness", `${SequencerCore.formatNumber(result.correctness)}%`);
+    appendLine(
+        listItem,
+        "Precedence Pair Score",
+        `${SequencerCore.formatNumber(result.precedenceScore)}% (${result.precedencePairsCorrect} / ${result.precedencePairsTotal})`
+    );
+    appendLine(listItem, "Weighted Order Score", `${SequencerCore.formatNumber(result.weightedOrderScore)}%`);
+
+    if (Number.isFinite(result.spearmanRho)) {
+        appendLine(listItem, "Spearman's Rho", SequencerCore.formatNumber(result.spearmanRho));
+        appendLine(listItem, "Spearman Score", `${SequencerCore.formatNumber(result.spearmanScore)}%`);
+        appendLine(listItem, "Geometric Mean Score", `${SequencerCore.formatNumber(result.geometricMean)}%`);
+        appendLine(listItem, "Harmonic Mean Score", `${SequencerCore.formatNumber(result.harmonicMean)}%`);
+        appendLine(listItem, "Min-Max Normalized Score", `${SequencerCore.formatNumber(result.minMaxNormalized)}%`);
+    } else {
+        appendLine(listItem, "Spearman's Rho", "N/A - requires equal-length sequences with the same unique elements.");
+    }
+
+    resultList.appendChild(listItem);
+}
+
+function appendLine(container, label, value) {
+    container.appendChild(document.createTextNode(`${label}: ${value}`));
+    container.appendChild(document.createElement("br"));
+}
+
+function formatItemFlags(itemComparison) {
+    if (!itemComparison || !itemComparison.hasFlags) {
+        return "None";
+    }
+
+    const flags = [];
+
+    if (itemComparison.missingItems.length > 0) {
+        flags.push(`Missing: ${itemComparison.missingItems.join("; ")}`);
+    }
+
+    if (itemComparison.extraItems.length > 0) {
+        flags.push(`Extra: ${itemComparison.extraItems.join("; ")}`);
+    }
+
+    if (itemComparison.duplicateItems.length > 0) {
+        flags.push(`Duplicates: ${itemComparison.duplicateItems.join("; ")}`);
+    }
+
+    return flags.join(" | ");
+}
+
+function convertResultToRow(fileResult) {
+    if (fileResult.error) {
+        return {
+            filename: fileResult.filename,
+            status: "Error",
+            error: fileResult.error,
+            itemFlags: "",
+            expectedCount: "",
+            submittedCount: "",
+            missingCount: "",
+            missingItems: "",
+            extraCount: "",
+            extraItems: "",
+            duplicateCount: "",
+            duplicateItems: "",
+            points: "",
+            maxPoints: "",
+            correctness: "",
+            precedencePairsCorrect: "",
+            precedencePairsTotal: "",
+            precedenceScore: "",
+            weightedOrderScore: "",
+            spearmanRho: "",
+            spearmanScore: "",
+            geometricMean: "",
+            harmonicMean: "",
+            minMaxNormalized: ""
+        };
+    }
+
+    const result = fileResult.result;
+    const itemComparison = result.itemComparison;
+    return {
+        filename: fileResult.filename,
+        status: "OK",
+        error: "",
+        itemFlags: formatItemFlags(itemComparison),
+        expectedCount: itemComparison.expectedCount,
+        submittedCount: itemComparison.submittedCount,
+        missingCount: itemComparison.missingCount,
+        missingItems: itemComparison.missingItems.join("; "),
+        extraCount: itemComparison.extraCount,
+        extraItems: itemComparison.extraItems.join("; "),
+        duplicateCount: itemComparison.duplicateCount,
+        duplicateItems: itemComparison.duplicateItems.join("; "),
+        points: result.points,
+        maxPoints: result.maxPoints,
+        correctness: SequencerCore.formatNumber(result.correctness),
+        precedencePairsCorrect: result.precedencePairsCorrect,
+        precedencePairsTotal: result.precedencePairsTotal,
+        precedenceScore: SequencerCore.formatNumber(result.precedenceScore),
+        weightedOrderScore: SequencerCore.formatNumber(result.weightedOrderScore),
+        spearmanRho: SequencerCore.formatNumber(result.spearmanRho),
+        spearmanScore: SequencerCore.formatNumber(result.spearmanScore),
+        geometricMean: SequencerCore.formatNumber(result.geometricMean),
+        harmonicMean: SequencerCore.formatNumber(result.harmonicMean),
+        minMaxNormalized: SequencerCore.formatNumber(result.minMaxNormalized)
+    };
 }
 
 function convertToCSV(objArray) {
     const array = typeof objArray !== 'object' ? JSON.parse(objArray) : objArray;
-    let str = '';
 
-    // Headers
-    for (let index in objArray[0]) {
-        if (str !== '') str += ',';
-        str += '"' + index + '"';
+    if (!Array.isArray(array) || array.length === 0) {
+        return '';
     }
-    str += '\r\n';
 
-    // Data
-    for (let i = 0; i < array.length; i++) {
-        let line = '';
-        for (let index in array[i]) {
-            if (line !== '') line += ',';
-            
-            let value = array[i][index];
-            if (typeof value === 'string' && value.includes(',')) { // Escaping values with commas
-                value = '"' + value + '"';
-            }
-            line += value;
-        }
-        str += line + '\r\n';
+    const headers = Object.keys(array[0]);
+    const rows = [
+        headers.map(escapeCsvValue).join(','),
+        ...array.map(row => headers.map(header => escapeCsvValue(row[header])).join(','))
+    ];
+
+    return `${rows.join('\r\n')}\r\n`;
+}
+
+function escapeCsvValue(value) {
+    let text = value == null ? '' : String(value);
+
+    if (typeof value === 'string' && /^[=+\-@]/.test(text)) {
+        text = `'${text}`;
     }
-    return str;
+
+    if (/[",\r\n]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+    }
+
+    return text;
 }
 
 function downloadCSV(csv, filename) {
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.style.display = 'none';
@@ -233,19 +333,22 @@ function downloadCSV(csv, filename) {
 
     document.body.appendChild(a);
     a.click();
+    a.remove();
     window.URL.revokeObjectURL(url);
 }
 
 function saveResultsAsCSV() {
+    if (isProcessing) {
+        alert('Wait for processing to finish before saving results.');
+        return;
+    }
+
     if (allResults.length === 0) {
         alert('No results to save!');
         return;
     }
-    
-    const csvString = convertToCSV(allResults);
 
-    // Use the stored root name from the reference file for the results filename
-    const resultsFileName = referenceFileNameRoot + '_results.csv';
+    const csvString = convertToCSV(allResults);
+    const resultsFileName = `${referenceFileNameRoot}_results.csv`;
     downloadCSV(csvString, resultsFileName);
 }
-

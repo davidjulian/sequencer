@@ -3,40 +3,80 @@ let distractors = [];
 let startingElements = [];
 let endingElements = [];
 
+document.addEventListener("DOMContentLoaded", function() {
+    SequencerUI.setupDropZone({
+        dropZoneId: "buildFileDropZone",
+        inputId: "buildFileInput"
+    });
+});
+
 function handleStartingElementsInput(input) {
-    startingElements = input.split('\n').filter(line => line.trim() !== "");
+    startingElements = SequencerCore.splitLines(input);
 }
 
 function handleEndingElementsInput(input) {
-    endingElements = input.split('\n').filter(line => line.trim() !== "");
+    endingElements = SequencerCore.splitLines(input);
 }
 
 function handleSequenceInput(input) {
-    sequence = input.split('\n').filter(line => line.trim() !== "");
+    sequence = SequencerCore.splitLines(input);
 }
 
 function handleDistractorInput(input) {
-    distractors = input.split('\n').filter(line => line.trim() !== "");
+    distractors = SequencerCore.splitLines(input);
+}
+
+function readBuilderInputs() {
+    handleStartingElementsInput(document.getElementById('startingElementsInput').value);
+    handleSequenceInput(document.getElementById('sequenceInput').value);
+    handleEndingElementsInput(document.getElementById('endingElementsInput').value);
+    handleDistractorInput(document.getElementById('distractorsInput').value);
+}
+
+function sanitizeBaseFilename(filename) {
+    return filename.trim().replace(/[\\/:*?"<>|]+/g, '_');
+}
+
+function validateBuildData() {
+    const errors = [];
+
+    if (sequence.length === 0) {
+        errors.push("Enter at least one sequence element.");
+    }
+
+    const duplicates = SequencerCore.findDuplicateElements(startingElements, sequence, endingElements, distractors);
+    if (duplicates.length > 0) {
+        errors.push(`Each element must be unique. Duplicates: ${duplicates.join(", ")}`);
+    }
+
+    return errors;
 }
 
 function generateRandomizedSequence() {
-    return sequence.concat(distractors).sort(() => Math.random() - 0.5);
-}
-
-function obfuscateData(data) {
-    return btoa(encodeURIComponent(data).replace(/%([0-9A-F]{2})/g, function toSolidBytes(match, p1) {
-        return String.fromCharCode('0x' + p1);
-    }));
+    return SequencerCore.shuffleCopy(sequence.concat(distractors));
 }
 
 function saveFiles() {
-    // Prompt for a base filename
+    readBuilderInputs();
+
+    const validationErrors = validateBuildData();
+    if (validationErrors.length > 0) {
+        alert(validationErrors.join('\n'));
+        return;
+    }
+
+    if (typeof JSZip === "undefined" || typeof saveAs === "undefined") {
+        alert("The file export libraries did not load. Check your internet connection and reload this page.");
+        return;
+    }
+
     const baseFilename = prompt("Enter a base filename:", "filename");
-    if (!baseFilename) {
+    if (!baseFilename || !sanitizeBaseFilename(baseFilename)) {
         alert("No filename entered. Operation cancelled.");
         return;
     }
 
+    const safeBaseFilename = sanitizeBaseFilename(baseFilename);
     const zip = new JSZip();
     const randomizedSequence = generateRandomizedSequence();
 
@@ -48,41 +88,53 @@ function saveFiles() {
         numberOfDistractors: distractors.length
     };
 
-    const combinedData = {
+    const assessmentData = {
         startingElements: startingElements,
-        sequence: obfuscateData(JSON.stringify(randomizedSequence)),
+        sequence: randomizedSequence,
         endingElements: endingElements,
         numberOfDistractors: distractors.length
     };
 
-    zip.file(`${baseFilename}_reference.seq`, JSON.stringify(referenceData));
-    zip.file(`${baseFilename}_self-check.seq`, JSON.stringify(combinedData));
-    zip.file(`${baseFilename}_assessment.seq`, JSON.stringify(combinedData));
+    zip.file(`${safeBaseFilename}_reference.seq`, JSON.stringify(referenceData));
+    zip.file(`${safeBaseFilename}_assessment.seq`, JSON.stringify(assessmentData));
 
     zip.generateAsync({ type: "blob" }).then(content => {
-        saveAs(content, `${baseFilename}_sequences.zip`);
+        saveAs(content, `${safeBaseFilename}_sequences.zip`);
+    }).catch(error => {
+        console.error("Error generating sequence files:", error);
+        alert("The sequence files could not be generated.");
     });
 }
 
 function openFile() {
-    let fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.seq';
-    fileInput.onchange = function(event) {
-        let file = event.target.files[0];
-        if (file) {
-            let reader = new FileReader();
-            reader.onload = function(readerEvent) {
-                let content = readerEvent.target.result;
-                populateUI(JSON.parse(content));
-                reader.onerror = function(error) {
-                    console.log('Error reading file:', error);
-                };
-            };
-            reader.readAsText(file);
+    document.getElementById('buildFileInput').click();
+}
+
+function loadBuildFileFromInput(event) {
+    const file = event.target.files[0];
+
+    if (file) {
+        loadBuildFile(file);
+    }
+}
+
+function loadBuildFile(file) {
+    let reader = new FileReader();
+    reader.onerror = function(error) {
+        console.error('Error reading file:', error);
+        alert("The selected file could not be read.");
+    };
+    reader.onload = function(readerEvent) {
+        try {
+            const content = readerEvent.target.result;
+            const data = SequencerCore.normalizeReferenceData(SequencerCore.parseJson(content, file.name));
+            populateUI(data);
+        } catch (error) {
+            console.error("Error opening sequence file:", error);
+            alert(error.message);
         }
     };
-    fileInput.click();
+    reader.readAsText(file);
 }
 
 function populateUI(data) {

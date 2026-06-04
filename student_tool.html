@@ -9,34 +9,41 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
 </head>
 <body>
-    <div class="student-tool">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <nav class="tool-nav" aria-label="Sequencer navigation">
+        <a href="index.html" class="button nav-button">Home</a>
+    </nav>
+
+    <main id="main-content" class="student-tool">
         <h1>Sequencer - Student</h1>
         
         <!-- File Upload -->
-        <input type="file" id="fileInput" onchange="loadFile(event)" accept=".seq">
-        <p id="distractorMessage"></p>
+        <input type="file" id="fileInput" class="visually-hidden" onchange="loadFile(event)" accept=".seq" tabindex="-1" aria-hidden="true">
+        <div id="studentFileDropZone" class="drop-zone" role="button" tabindex="0" aria-controls="fileInput" aria-label="Choose assessment file" aria-describedby="studentFileStatus">
+            <strong>Assessment File</strong>
+            <span>Drop .seq file here or choose file</span>
+        </div>
+        <small id="studentFileStatus" class="drop-status" data-drop-status role="status" aria-live="polite">No file selected</small>
+        <p id="distractorMessage" role="status" aria-live="polite"></p>
+        <p id="studentStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
                 
         <!-- Sequence Display -->
         <!-- The sequence elements -->
-        <ul id="startingList"></ul>
-        <ul id="sequenceList"></ul>
-        <ul id="endingList"></ul>
+        <ul id="startingList" aria-label="Fixed starting events"></ul>
+        <ul id="sequenceList" aria-label="Events to order"></ul>
+        <ul id="endingList" aria-label="Fixed ending events"></ul>
         
-        <!-- Check Button (for self-check) -->
-        <!-- <button id="checkButton" onclick="checkSequence()">Check</button> -->
-        
-        <!-- Display Score (for self-check) -->
-        <!-- <div id="scoreDisplay"></div> -->
+        <button type="button" onclick="saveSequence()">Save Sequence</button>
 
-        <button onclick="saveSequence()">Save Sequence</button>
+    </main>
 
-    </div>
-
+    <script src="sequencer_ui.js"></script>
+    <script src="sequencer_core.js"></script>
     <script src="student_tool.js"></script>
 
     <footer>
-        <p>&copy; 2024 David Julian, University of Florida</p>
-        <p><a href="Terms_of_Service.html" target="_blank">Terms of Service</a></p>
+        <p>&copy; 2026 David Julian, University of Florida</p>
+        <p><button type="button" class="link-button" onclick="SequencerUI.openAboutDialog()">About</button> | <button type="button" class="link-button" onclick="SequencerUI.openTermsDialog()">Terms of Service</button></p>
     </footer>
     
 </body>

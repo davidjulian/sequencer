@@ -8,27 +8,58 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="sequencer-build">
-        <h1>Sequencer - Build</h1>
-        
-        <textarea id="startingElementsInput" placeholder="(Optional) Enter fixed starting elements here..." onchange="handleStartingElementsInput(this.value)"></textarea>
-        <textarea id="sequenceInput" placeholder="Enter the sequence here..." onchange="handleSequenceInput(this.value)"></textarea>
-        <textarea id="endingElementsInput" placeholder="(Optional) Enter fixed ending elements here..." onchange="handleEndingElementsInput(this.value)"></textarea>
-        <textarea id="distractorsInput" placeholder="(Optional) Enter distractor elements here..." onchange="handleDistractorInput(this.value)"></textarea>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <nav class="tool-nav" aria-label="Sequencer navigation">
+        <a href="index.html" class="button nav-button">Home</a>
+    </nav>
 
-        <button onclick="openFile()">Open File</button>
-        <button onclick="saveFiles()">Save Files</button>
-    </div>
+    <main id="main-content" class="sequencer-build">
+        <h1>Sequencer - Build</h1>
+        <div class="tool-actions" aria-label="Build actions">
+            <button type="button" onclick="saveFiles()">Save Files</button>
+        </div>
+        
+        <div class="form-field">
+            <label for="startingElementsInput">Fixed starting elements <span class="optional-text">(optional)</span></label>
+            <textarea id="startingElementsInput" placeholder="Enter one element per line" onchange="handleStartingElementsInput(this.value)"></textarea>
+        </div>
+        <div class="form-field">
+            <label for="sequenceInput">Sequence elements</label>
+            <textarea id="sequenceInput" placeholder="Enter one element per line in the correct order" onchange="handleSequenceInput(this.value)"></textarea>
+        </div>
+        <div class="form-field">
+            <label for="endingElementsInput">Fixed ending elements <span class="optional-text">(optional)</span></label>
+            <textarea id="endingElementsInput" placeholder="Enter one element per line" onchange="handleEndingElementsInput(this.value)"></textarea>
+        </div>
+        <div class="form-field">
+            <label for="distractorsInput">Distractor elements <span class="optional-text">(optional)</span></label>
+            <textarea id="distractorsInput" placeholder="Enter one element per line" onchange="handleDistractorInput(this.value)"></textarea>
+        </div>
+
+        <details class="optional-file-loader">
+            <summary>Open Existing Reference File</summary>
+            <div class="tool-actions" aria-label="Open existing reference file">
+                <button type="button" onclick="openFile()">Open File</button>
+            </div>
+            <input type="file" id="buildFileInput" class="visually-hidden" onchange="loadBuildFileFromInput(event)" accept=".seq" tabindex="-1" aria-hidden="true">
+            <div id="buildFileDropZone" class="drop-zone" role="button" tabindex="0" aria-controls="buildFileInput" aria-label="Choose existing reference file" aria-describedby="buildFileStatus">
+                <strong>Reference File</strong>
+                <span>Drop .seq file here or choose file</span>
+            </div>
+            <small id="buildFileStatus" class="drop-status" data-drop-status role="status" aria-live="polite">No file selected</small>
+        </details>
+    </main>
     
     <!-- Load libraries... -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.6.0/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.js"></script>
+    <script src="sequencer_ui.js"></script>
+    <script src="sequencer_core.js"></script>
     <script src="build_tool.js"></script>
     
     <footer>
-        <p>&copy; 2024 David Julian, University of Florida</p>
-        <p><a href="Terms_of_Service.html" target="_blank">Terms of Service</a></p>
+        <p>&copy; 2026 David Julian, University of Florida</p>
+        <p><button type="button" class="link-button" onclick="SequencerUI.openAboutDialog()">About</button> | <button type="button" class="link-button" onclick="SequencerUI.openTermsDialog()">Terms of Service</button></p>
     </footer>
     
 </body>
