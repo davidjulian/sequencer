@@ -13,25 +13,27 @@
         <a href="index.html" class="button nav-button">Home</a>
     </nav>
 
-    <main id="main-content">
+    <main id="main-content" class="analyze-tool">
     <h1>Sequencer - Analyze</h1>
     <p id="analysisStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
 
+    <section id="analysis-inputs" aria-labelledby="analysis-inputs-heading">
+    <h2 id="analysis-inputs-heading">Analysis Files</h2>
     <div class="file-panel">
-        <h2 class="file-panel-title">Reference File</h2>
+        <h3 class="file-panel-title">Reference File</h3>
         <input type="file" id="reference-file" class="visually-hidden" accept=".seq" tabindex="-1" aria-hidden="true">
         <div id="referenceFileDropZone" class="drop-zone" role="button" tabindex="0" aria-controls="reference-file" aria-label="Choose instructor reference file" aria-describedby="referenceFileStatus">
             <strong>Reference File</strong>
-            <span>Drop instructor reference .seq file here or choose file</span>
+            <span>Drop instructor reference.seq file here or click here to choose file</span>
         </div>
         <small id="referenceFileStatus" class="drop-status" data-drop-status role="status" aria-live="polite">No file selected</small>
     </div>
     <div class="file-panel">
-        <h2 class="file-panel-title">Student Sequence Files</h2>
+        <h3 class="file-panel-title">Student Sequence Files</h3>
         <input type="file" id="sequence-files" class="visually-hidden" multiple accept=".seq" tabindex="-1" aria-hidden="true">
         <div id="studentFilesDropZone" class="drop-zone" role="button" tabindex="0" aria-controls="sequence-files" aria-label="Choose student sequence files" aria-describedby="studentFilesStatus">
             <strong>Student Files</strong>
-            <span>Drop student .seq files here or choose files</span>
+            <span>Drop student .seq files here or click here to choose files</span>
         </div>
         <small id="studentFilesStatus" class="drop-status" data-drop-status role="status" aria-live="polite">No files selected</small>
         <div class="tool-actions">
@@ -40,15 +42,57 @@
     </div>
     
     <div class="tool-actions" aria-label="Analyze actions">
-        <button id="process-button" onclick="processFiles()">Process</button>
-        <button id="save-results-button" onclick="saveResultsAsCSV()" disabled>Save Results as CSV</button>
+        <button id="process-button" onclick="processFiles()">Generate Class Report</button>
+        <button id="export-report-button" onclick="exportClassReport()" disabled>Export Report</button>
+        <button id="print-report-button" onclick="printClassReport()" disabled>Print Report</button>
         <button id="clear-all-button" type="button" onclick="clearAllAnalysis()">Clear All</button>
     </div>
+    </section>
 
-    <h2 id="results-heading">Results</h2>
-    <ul id="results-list" aria-labelledby="results-heading"></ul>
+    <section id="class-report" class="class-report" aria-labelledby="class-report-heading" hidden>
+        <div class="report-heading-row">
+            <div>
+                <h2 id="class-report-heading" tabindex="-1">Class Report</h2>
+                <p id="class-report-summary" class="report-summary"></p>
+            </div>
+            <div class="report-controls" aria-label="Report display and export options">
+                <label><input id="show-full-text" type="checkbox"> Show full element text</label>
+                <label><input id="include-invalid-files" type="checkbox" checked> Include invalid files in export</label>
+            </div>
+        </div>
+
+        <div class="report-tabs" role="tablist" aria-label="Class report views">
+            <button id="overview-tab" type="button" role="tab" aria-selected="true" aria-controls="overview-panel" data-report-tab="overview-panel">Sequence Overview</button>
+            <button id="elements-tab" type="button" role="tab" aria-selected="false" aria-controls="elements-panel" data-report-tab="elements-panel" tabindex="-1">Elements</button>
+            <button id="relationships-tab" type="button" role="tab" aria-selected="false" aria-controls="relationships-panel" data-report-tab="relationships-panel" tabindex="-1">Relationships</button>
+            <button id="exclusions-tab" type="button" role="tab" aria-selected="false" aria-controls="exclusions-panel" data-report-tab="exclusions-panel" tabindex="-1">Exclusions</button>
+            <button id="student-results-tab" type="button" role="tab" aria-selected="false" aria-controls="student-results-panel" data-report-tab="student-results-panel" tabindex="-1">Student Results</button>
+        </div>
+
+        <section id="overview-panel" class="report-panel" role="tabpanel" aria-labelledby="overview-tab"></section>
+        <section id="elements-panel" class="report-panel" role="tabpanel" aria-labelledby="elements-tab" hidden></section>
+        <section id="relationships-panel" class="report-panel" role="tabpanel" aria-labelledby="relationships-tab" hidden>
+            <h3>Relationship Evidence</h3>
+            <div class="report-filters">
+                <label for="relationship-element-filter">Element</label>
+                <select id="relationship-element-filter">
+                    <option value="">All elements</option>
+                </select>
+                <label for="relationship-type-filter">Relationship type</label>
+                <select id="relationship-type-filter">
+                    <option value="all">All precedence relationships</option>
+                    <option value="immediate">Immediate neighbor relationships</option>
+                </select>
+                <label><input id="relationship-errors-only" type="checkbox" checked> Show only relationships with errors</label>
+            </div>
+            <div id="relationships-table-container"></div>
+        </section>
+        <section id="exclusions-panel" class="report-panel" role="tabpanel" aria-labelledby="exclusions-tab" hidden></section>
+        <section id="student-results-panel" class="report-panel" role="tabpanel" aria-labelledby="student-results-tab" hidden></section>
+    </section>
     </main>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.6.0/jszip.min.js"></script>
     <script src="sequencer_ui.js"></script>
     <script src="sequencer_core.js"></script>
     <script src="analyze_tool.js"></script>

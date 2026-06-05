@@ -3,8 +3,8 @@
 
     function getScoringAboutText() {
         return [
-            "Answers can receive partial credit. The scoring algorithm analyzes adjacent pairs for correctness, event order precedence, and Spearman's rho to summarize overall order.",
-            "Files with missing, extra, or duplicated events are flagged during analysis so instructors can review those submissions separately."
+            "Answers can receive partial credit. The scoring algorithm analyzes adjacent pairs for correctness, element order precedence, and Spearman's rho to summarize overall order.",
+            "Class reports identify recurring sequence-ordering segments and relationship errors. Files with missing, extra, or duplicated elements are flagged separately."
         ];
     }
 
@@ -167,11 +167,11 @@
             }
         }
 
-        dropZone.addEventListener("click", () => input.click());
+        dropZone.addEventListener("click", () => openFilePicker(input, dropZone, multiple, options.pickerId));
         dropZone.addEventListener("keydown", event => {
             if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                input.click();
+                openFilePicker(input, dropZone, multiple, options.pickerId);
             }
         });
 
@@ -213,6 +213,43 @@
             const files = Array.from(input.files || []);
             setDropZoneStatus(dropZone, files.length > 0 ? formatFileStatus(files) : "No file selected");
         });
+    }
+
+    async function openFilePicker(input, dropZone, multiple, pickerId) {
+        if (!pickerId || typeof window.showOpenFilePicker !== "function" || !window.isSecureContext) {
+            input.click();
+            return;
+        }
+
+        try {
+            const handles = await window.showOpenFilePicker({
+                id: pickerId,
+                multiple,
+                excludeAcceptAllOption: true,
+                types: [
+                    {
+                        description: "Sequencer files",
+                        accept: {
+                            "application/json": [".seq"]
+                        }
+                    }
+                ]
+            });
+            const files = await Promise.all(handles.map(handle => handle.getFile()));
+
+            if (!setInputFiles(input, files)) {
+                setDropZoneStatus(dropZone, "Choose file using drag and drop instead");
+                return;
+            }
+
+            setDropZoneStatus(dropZone, formatFileStatus(files));
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+        } catch (error) {
+            if (error?.name !== "AbortError") {
+                console.warn("The remembered-location file picker could not be opened.", error);
+                input.click();
+            }
+        }
     }
 
     function setInputFiles(input, files) {
