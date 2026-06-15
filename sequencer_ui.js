@@ -3,7 +3,7 @@
 
     function getScoringAboutText() {
         return [
-            "Answers can receive partial credit. The scoring algorithm analyzes adjacent pairs for correctness, element order precedence, and Spearman's rho to summarize overall order.",
+            "Answers can receive partial credit. The scoring algorithm analyzes adjacent-pair accuracy and element order precedence to summarize overall order.",
             "Class reports identify recurring sequence-ordering segments and relationship errors. Files with missing, extra, or duplicated elements are flagged separately."
         ];
     }

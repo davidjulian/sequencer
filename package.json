@@ -1,0 +1,13 @@
+{
+  "name": "sequencer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static web app for building, completing, and analyzing sequence activities.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/sequencer_core.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

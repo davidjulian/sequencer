@@ -1040,7 +1040,7 @@ function renderStudentResults() {
                 ...fileResult,
                 status: "Error",
                 itemFlags: "",
-                correctness: NaN,
+                adjacentPairScore: NaN,
                 precedenceScore: NaN,
                 weightedOrderScore: NaN
             };
@@ -1050,7 +1050,7 @@ function renderStudentResults() {
             ...fileResult,
             status: "OK",
             itemFlags: formatItemFlags(fileResult.result.itemComparison),
-            correctness: fileResult.result.correctness,
+            adjacentPairScore: fileResult.result.adjacentPairScore,
             precedenceScore: fileResult.result.precedenceScore,
             weightedOrderScore: fileResult.result.weightedOrderScore
         };
@@ -1080,8 +1080,8 @@ function renderStudentResults() {
             },
             {
                 label: "Adjacent Pair Score",
-                sortKey: "correctness",
-                render: row => formatPercent(row.correctness)
+                sortKey: "adjacentPairScore",
+                render: row => formatPercent(row.adjacentPairScore)
             },
             {
                 label: "Precedence Pair Score",
@@ -1113,14 +1113,9 @@ function createStudentDetails(row) {
         [
             ["Item Flags", formatItemFlags(result.itemComparison)],
             ["Points", `${result.points} / ${result.maxPoints}`],
-            ["Adjacent Pair Correctness", formatPercent(result.correctness)],
+            ["Adjacent Pair Score", formatPercent(result.adjacentPairScore)],
             ["Precedence Pair Score", `${formatPercent(result.precedenceScore)} (${result.precedencePairsCorrect} / ${result.precedencePairsTotal})`],
-            ["Weighted Order Score", formatPercent(result.weightedOrderScore)],
-            ["Spearman's Rho", SequencerCore.formatNumber(result.spearmanRho)],
-            ["Spearman Score", formatPercent(result.spearmanScore)],
-            ["Geometric Mean Score", formatPercent(result.geometricMean)],
-            ["Harmonic Mean Score", formatPercent(result.harmonicMean)],
-            ["Min-Max Normalized Score", formatPercent(result.minMaxNormalized)]
+            ["Weighted Order Score", formatPercent(result.weightedOrderScore)]
         ].forEach(([term, description]) => {
             list.appendChild(makeElement("dt", "", term));
             list.appendChild(makeElement("dd", "", description));
@@ -1418,16 +1413,11 @@ function convertResultToRow(fileResult) {
             duplicateItems: "",
             points: "",
             maxPoints: "",
-            correctness: "",
+            adjacentPairScore: "",
             precedencePairsCorrect: "",
             precedencePairsTotal: "",
             precedenceScore: "",
-            weightedOrderScore: "",
-            spearmanRho: "",
-            spearmanScore: "",
-            geometricMean: "",
-            harmonicMean: "",
-            minMaxNormalized: ""
+            weightedOrderScore: ""
         };
     }
 
@@ -1448,16 +1438,11 @@ function convertResultToRow(fileResult) {
         duplicateItems: itemComparison.duplicateItems.join("; "),
         points: result.points,
         maxPoints: result.maxPoints,
-        correctness: SequencerCore.formatNumber(result.correctness),
+        adjacentPairScore: SequencerCore.formatNumber(result.adjacentPairScore),
         precedencePairsCorrect: result.precedencePairsCorrect,
         precedencePairsTotal: result.precedencePairsTotal,
         precedenceScore: SequencerCore.formatNumber(result.precedenceScore),
-        weightedOrderScore: SequencerCore.formatNumber(result.weightedOrderScore),
-        spearmanRho: SequencerCore.formatNumber(result.spearmanRho),
-        spearmanScore: SequencerCore.formatNumber(result.spearmanScore),
-        geometricMean: SequencerCore.formatNumber(result.geometricMean),
-        harmonicMean: SequencerCore.formatNumber(result.harmonicMean),
-        minMaxNormalized: SequencerCore.formatNumber(result.minMaxNormalized)
+        weightedOrderScore: SequencerCore.formatNumber(result.weightedOrderScore)
     };
 }
 

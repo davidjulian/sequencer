@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", function() {
 function loadFile(event) {
     const file = event.target.files[0];
     if (file) {
-        globalFileName = file.name; // Store the file name
+        globalFileName = file.name;
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
@@ -42,12 +42,10 @@ function displaySequence(content) {
     const sequenceList = document.getElementById('sequenceList');
     const endingList = document.getElementById('endingList');
 
-    // Clear existing lists
     startingList.replaceChildren();
     sequenceList.replaceChildren();
     endingList.replaceChildren();
 
-    // Check for numberOfDistractors and set the display accordingly
     const showExcludeButton = data.numberOfDistractors > 0;
     const distractorMessageElement = document.getElementById('distractorMessage');
 
@@ -55,25 +53,20 @@ function displaySequence(content) {
         const elementWord = data.numberOfDistractors === 1 ? "element" : "elements";
         const message = `Exclude ${data.numberOfDistractors} ${elementWord}.`;
         distractorMessageElement.textContent = message;
-    
-        // Set the global variable
         globalNumberOfDistractors = data.numberOfDistractors;
     } else {
         distractorMessageElement.textContent = "";
         globalNumberOfDistractors = 0;
     }
 
-    // Populate starting elements (if any)
     data.startingElements.forEach(item => {
         startingList.appendChild(createSequenceItem(item, { locked: true }));
     });
 
-    // Populate the main sequence items with or without the "exclude" button based on showExcludeButton
     decodedSequence.forEach(item => {
         sequenceList.appendChild(createSequenceItem(item, { showExcludeButton }));
     });
 
-    // Populate ending elements (if any)
     data.endingElements.forEach(item => {
         endingList.appendChild(createSequenceItem(item, { locked: true }));
     });
@@ -175,13 +168,6 @@ function excludeElement(buttonElement) {
     }
 }
 
-//Fisher-Yates shuffle algorithm
-function shuffle(array) {
-    const shuffled = SequencerCore.shuffleCopy(array);
-    array.splice(0, array.length, ...shuffled);
-    return array;
-}
-
 function moveUp(buttonElement) {
     const sequenceList = document.getElementById('sequenceList');
     const currentItem = buttonElement.closest('.sequence-item');
@@ -278,7 +264,6 @@ function saveSequence() {
     const items = [];
     let excludedCount = 0;
 
-    // Iterate over each list item, and collect the sequence
     for (const listItem of sequenceList) {
         if (listItem.classList.contains('excluded')) {
             excludedCount++;
@@ -290,22 +275,18 @@ function saveSequence() {
         }
     }
 
-    // Check if the correct number of elements have been excluded
     const expectedDistractors = globalNumberOfDistractors;
     if (expectedDistractors && excludedCount !== expectedDistractors) {
         alert(`You have excluded ${excludedCount} element(s). The starting sequence has ${expectedDistractors} element(s) that should be excluded.`);
         return;
     }
 
-    // Convert the sequence to a string format
     const content = JSON.stringify(items);
 
-    // Modify the filename for saving
     let saveFileName = getStudentFilename(globalFileName);
     const studentId = prompt("Optional: enter your unique identifier to append to the filename.", "");
     saveFileName = appendOptionalIdToFilename(saveFileName, studentId);
-    
-    // Create a downloadable blob
+
     const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
     saveAs(blob, saveFileName);
     announceStudentStatus(`Sequence download started as ${saveFileName}.`);
