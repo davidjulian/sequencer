@@ -150,12 +150,30 @@ button:focus-visible,
 .report-tabs button {
     margin-bottom: -1px;
     border-radius: 6px 6px 0 0;
+    border-color: #c7d0d9;
+    background: #eef4f8;
+    color: #174f78;
 }
 
 .report-tabs button[aria-selected="true"] {
+    padding-top: 6px;
+    border-top: 3px solid #2673a6;
     border-bottom-color: #ffffff;
     background: #ffffff;
+    color: #1f2933;
     font-weight: 700;
+}
+
+#clear-student-files-button,
+#clear-all-button {
+    border-color: #d7aaa2;
+    background: #fff7f5;
+    color: #8a2d20;
+}
+
+#clear-student-files-button:hover,
+#clear-all-button:hover {
+    background: #fdeeea;
 }
 
 .report-panel {
@@ -241,6 +259,15 @@ button:focus-visible,
     background: #ffffff;
 }
 
+.hotspot-range-block {
+    border-color: #0f766e;
+    background: #eefaf7;
+}
+
+.hotspot-range-block .sequence-overview-row {
+    border-left-color: #0f766e;
+}
+
 .broad-range-block {
     border-color: #9b1c1c;
     background: #fff3f3;
@@ -271,6 +298,15 @@ button:focus-visible,
     border: 1px solid #c67519;
     border-radius: 8px;
     background: #fffdf8;
+}
+
+.key-hotspots-section {
+    margin-top: 18px;
+}
+
+.hotspot-finding-card {
+    border-color: #0f766e;
+    background: #fbfffe;
 }
 
 .broad-finding-card {
@@ -475,8 +511,40 @@ button:focus-visible,
     gap: 8px;
 }
 
+.relationship-label {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+}
+
 .relationship-full-text {
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
     color: #4f5f6f;
+}
+
+.class-report.show-full-text .relationship-full-text {
+    display: flex;
+}
+
+.relationship-operator {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.45em;
+    padding: 0 6px;
+    border: 1px solid #c7d0d9;
+    border-radius: 999px;
+    background: #eef1f4;
+    color: #1f2933;
+    font-size: 0.88em;
+    font-style: italic;
+    font-weight: 700;
+}
+
+.relationship-text-part {
+    min-width: 0;
 }
 
 .report-details {

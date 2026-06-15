@@ -273,7 +273,7 @@ function renderClassReport() {
         + `${invalidCount} invalid ${invalidCount === 1 ? "file" : "files"}, `
         + `${classReport.elementCount} sequence ${classReport.elementCount === 1 ? "element" : "elements"}, `
         + `${classReport.distractorCount} ${classReport.distractorCount === 1 ? "distractor" : "distractors"}, `
-        + `${classReport.sequenceSegments.length} ordering ${classReport.sequenceSegments.length === 1 ? "segment" : "segments"} identified.`;
+        + `${classReport.confusionHotspots.length} key confusion ${classReport.confusionHotspots.length === 1 ? "hotspot" : "hotspots"} identified.`;
 
     populateRelationshipElementFilter();
     renderOverview();
@@ -337,12 +337,7 @@ function renderOverview() {
     const panel = document.getElementById("overview-panel");
     panel.replaceChildren();
     panel.appendChild(makeElement("h3", "", "Sequence Ordering Overview"));
-    panel.appendChild(makeElement(
-        "p",
-        "interpretation-note",
-        `This view identifies recurring ordering problems within the sequence. Segments require at least two relationships reversed by `
-        + `${classReport.relationshipErrorThreshold}% or more of eligible submissions.`
-    ));
+    panel.appendChild(createConfusionHotspotFindings());
     panel.appendChild(createSequenceOverview());
     panel.appendChild(createSequenceSegmentFindings());
     panel.appendChild(createBroadSequenceFindings());
@@ -358,6 +353,7 @@ function renderOverview() {
     metrics.appendChild(createMetricCard("Median precedence score", formatPercent(classReport.scoreSummary.precedenceMedian)));
     metrics.appendChild(createMetricCard("Mean adjacent-pair score", formatPercent(classReport.scoreSummary.adjacentMean)));
     metrics.appendChild(createMetricCard("Median adjacent-pair score", formatPercent(classReport.scoreSummary.adjacentMedian)));
+    metrics.appendChild(createMetricCard("Pairwise reversal baseline", formatPercent(classReport.overallRelationshipErrorRate)));
     panel.appendChild(metrics);
 
     const findings = makeElement("div", "overview-findings");
@@ -366,11 +362,124 @@ function renderOverview() {
     panel.appendChild(findings);
 }
 
+function createConfusionHotspotFindings() {
+    const section = makeElement("section", "sequence-findings-section key-hotspots-section");
+    section.appendChild(makeElement("h4", "", "Key Confusion Hotspots"));
+
+    if (classReport.confusionHotspots.length === 0) {
+        section.appendChild(makeElement(
+            "p",
+            "empty-message",
+            "No small event range stood out above the classwide pairwise error baseline."
+        ));
+        return section;
+    }
+
+    classReport.confusionHotspots.forEach(hotspot => {
+        section.appendChild(createHotspotFindingCard(hotspot));
+    });
+    return section;
+}
+
+function createHotspotFindingCard(hotspot) {
+    const card = makeElement("article", "segment-finding-card hotspot-finding-card");
+    card.appendChild(makeElement("h5", "", `Hotspot ${hotspot.hotspotRank}: ${hotspot.startLabel}-${hotspot.endLabel}`));
+    card.appendChild(makeElement(
+        "p",
+        "segment-finding-summary",
+        `${formatPercent(hotspot.pairwiseErrorRate)} of eligible pairwise comparisons inside this range were reversed `
+        + `(${hotspot.reversedComparisons}/${hotspot.eligibleComparisons}), compared with `
+        + `${formatPercent(hotspot.baselineErrorRate)} classwide. This hotspot accounts for `
+        + `${formatPercent(hotspot.impactRate)} of all pairwise ordering errors.`
+    ));
+    card.appendChild(makeElement("h6", "", "Expected order"));
+    card.appendChild(makeElement("p", "order-pattern expected-order-pattern", hotspot.expectedLabels.join(" -> ")));
+
+    const relationshipRows = hotspot.topRelationships.slice(0, 5);
+    card.appendChild(makeElement("h6", "", "Most reversed relationships"));
+    card.appendChild(createReportTable({
+        rows: relationshipRows,
+        columns: [
+            {
+                label: "Expected Relationship",
+                render: relationship => createRelationshipCell(relationship)
+            },
+            {
+                label: "Students Reversing It",
+                render: relationship => formatCountRate(
+                    relationship.reversedStudents,
+                    relationship.eligibleStudents,
+                    relationship.reversalRate
+                )
+            }
+        ],
+        emptyMessage: "No reversed relationships were recorded inside this hotspot."
+    }));
+
+    card.appendChild(makeElement("h6", "", "Placement direction"));
+    card.appendChild(createReportTable({
+        rows: [...hotspot.elementDirections].sort((first, second) => (
+            Math.max(second.tooEarlyRate || 0, second.tooLateRate || 0)
+            - Math.max(first.tooEarlyRate || 0, first.tooLateRate || 0)
+        )),
+        columns: [
+            {
+                label: "Element",
+                render: element => createElementReference(element.label, element.text)
+            },
+            {
+                label: "Too Early",
+                render: element => formatCountRate(
+                    element.tooEarlyStudents,
+                    element.tooEarlyEligibleStudents,
+                    element.tooEarlyRate
+                )
+            },
+            {
+                label: "Too Late",
+                render: element => formatCountRate(
+                    element.tooLateStudents,
+                    element.tooLateEligibleStudents,
+                    element.tooLateRate
+                )
+            }
+        ]
+    }));
+
+    const commonOrders = hotspot.commonIncorrectOrders.slice(0, 3);
+    if (commonOrders.length > 0) {
+        const details = createLazyDetails("View common relative orders in this hotspot", detailsElement => {
+            detailsElement.appendChild(createReportTable({
+                rows: commonOrders,
+                columns: [
+                    {
+                        label: "Observed Relative Order",
+                        render: pattern => makeElement("span", "order-pattern", pattern.labels.join(" -> "))
+                    },
+                    {
+                        label: "Pattern",
+                        render: pattern => pattern.description
+                    },
+                    {
+                        label: "Students",
+                        render: pattern => formatCountRate(pattern.count, hotspot.eligibleStudents, pattern.rate)
+                    }
+                ]
+            }));
+        });
+        card.appendChild(details);
+    }
+
+    return card;
+}
+
 function createSequenceOverview() {
     const section = makeElement("section", "sequence-overview");
     section.appendChild(makeElement("h4", "", "Expected Sequence"));
     const list = makeElement("div", "sequence-overview-list");
-    const rangeFindings = [...classReport.sequenceSegments, ...classReport.broadSequenceConfusion]
+    const rangeFindings = (classReport.confusionHotspots.length > 0
+        ? [...classReport.confusionHotspots]
+        : [...classReport.sequenceSegments, ...classReport.broadSequenceConfusion])
         .sort((first, second) => first.startIndex - second.startIndex);
     const findingByStartIndex = new Map(rangeFindings.map(finding => [finding.startIndex, finding]));
     const segmentNumberByStartIndex = getSequenceSegmentNumberByStartIndex();
@@ -394,19 +503,29 @@ function createSequenceOverview() {
         const finding = findingByStartIndex.get(index);
 
         if (finding) {
+            const isHotspot = Number.isInteger(finding.hotspotRank);
             const isBroad = finding.endIndex - finding.startIndex + 1 > classReport.maxSegmentElements;
-            const block = makeElement("section", isBroad ? "sequence-range-block broad-range-block" : "sequence-range-block");
+            const block = makeElement(
+                "section",
+                isHotspot
+                    ? "sequence-range-block hotspot-range-block"
+                    : isBroad ? "sequence-range-block broad-range-block" : "sequence-range-block"
+            );
             block.appendChild(makeElement(
                 "h5",
                 "sequence-range-heading",
-                isBroad
+                isHotspot
+                    ? `Key confusion hotspot ${finding.hotspotRank}: ${finding.startLabel}-${finding.endLabel}`
+                    : isBroad
                     ? `Broad ordering confusion: ${finding.startLabel}-${finding.endLabel}`
                     : `Ordering confusion segment ${segmentNumberByStartIndex.get(finding.startIndex)}: ${finding.startLabel}-${finding.endLabel}`
             ));
             block.appendChild(makeElement(
                 "p",
                 "sequence-range-rate",
-                `${formatCountRate(finding.affectedStudents, finding.eligibleStudents, finding.affectedRate)} of eligible submissions used a different internal order.`
+                isHotspot
+                    ? `${formatPercent(finding.pairwiseErrorRate)} pairwise reversal rate; ${formatPercent(finding.impactRate)} of all pairwise errors.`
+                    : `${formatCountRate(finding.affectedStudents, finding.eligibleStudents, finding.affectedRate)} of eligible submissions used a different internal order.`
             ));
 
             finding.elements.forEach(element => {
@@ -850,24 +969,17 @@ function renderRelationships() {
 
 function createRelationshipCell(relationship) {
     const container = makeElement("div", "relationship-cell");
-    container.appendChild(makeElement(
-        "strong",
-        "relationship-label",
-        `${relationship.firstLabel} before ${relationship.secondLabel}`
-    ));
+    const label = makeElement("strong", "relationship-label");
+    label.appendChild(document.createTextNode(relationship.firstLabel));
+    label.appendChild(makeElement("span", "relationship-operator", "before"));
+    label.appendChild(document.createTextNode(relationship.secondLabel));
+    container.appendChild(label);
 
-    const inlineText = makeElement(
-        "span",
-        "relationship-full-text full-text-only",
-        `${relationship.firstText} before ${relationship.secondText}`
-    );
+    const inlineText = makeElement("span", "relationship-full-text full-text-only");
+    inlineText.appendChild(makeElement("span", "relationship-text-part", relationship.firstText));
+    inlineText.appendChild(makeElement("span", "relationship-operator", "before"));
+    inlineText.appendChild(makeElement("span", "relationship-text-part", relationship.secondText));
     container.appendChild(inlineText);
-
-    const details = createLazyDetails("View complete element text", detailsElement => {
-        detailsElement.appendChild(createFullReference(relationship.firstLabel, relationship.firstText));
-        detailsElement.appendChild(createFullReference(relationship.secondLabel, relationship.secondText));
-    });
-    container.appendChild(details);
     return container;
 }
 
@@ -1456,6 +1568,10 @@ function createOverviewExportRows() {
         { metric: "Invalid files", value: invalidCount },
         { metric: "Sequence elements", value: classReport.elementCount },
         { metric: "Distractor elements", value: classReport.distractorCount },
+        { metric: "Key confusion hotspots", value: classReport.confusionHotspots.length },
+        { metric: "Pairwise reversal baseline", value: `${SequencerCore.formatNumber(classReport.overallRelationshipErrorRate)}%` },
+        { metric: "Total pairwise ordering errors", value: classReport.totalRelationshipErrors },
+        { metric: "Total eligible pairwise comparisons", value: classReport.totalEligibleRelationships },
         { metric: "Ordering confusion segments", value: classReport.sequenceSegments.length },
         { metric: "Broad sequence confusion ranges", value: classReport.broadSequenceConfusion.length },
         { metric: "Isolated relationship errors", value: classReport.isolatedRelationshipErrors.length },
@@ -1468,6 +1584,93 @@ function createOverviewExportRows() {
         { metric: "Submissions with extra elements", value: summary.submissionsWithExtraItems },
         { metric: "Submissions with duplicate elements", value: summary.submissionsWithDuplicateItems }
     ];
+}
+
+function createHotspotExportRows() {
+    const rows = [];
+
+    classReport.confusionHotspots.forEach(hotspot => {
+        rows.push({
+            rowType: "Hotspot summary",
+            hotspotRank: hotspot.hotspotRank,
+            startElementLabel: hotspot.startLabel,
+            endElementLabel: hotspot.endLabel,
+            elementLabels: hotspot.elements.map(element => element.label).join("; "),
+            elementTexts: hotspot.elements.map(element => element.text).join("; "),
+            relatedElementLabels: "",
+            relatedElementTexts: "",
+            observedOrder: "",
+            patternDescription: "",
+            reversedComparisons: hotspot.reversedComparisons,
+            eligibleComparisons: hotspot.eligibleComparisons,
+            pairwiseErrorRate: SequencerCore.formatNumber(hotspot.pairwiseErrorRate),
+            baselineErrorRate: SequencerCore.formatNumber(hotspot.baselineErrorRate),
+            excessRate: SequencerCore.formatNumber(hotspot.excessRate),
+            impactRate: SequencerCore.formatNumber(hotspot.impactRate),
+            affectedStudents: hotspot.affectedStudents,
+            eligibleStudents: hotspot.eligibleStudents,
+            affectedRate: SequencerCore.formatNumber(hotspot.affectedRate),
+            priorityScore: SequencerCore.formatNumber(hotspot.priorityScore)
+        });
+
+        hotspot.topRelationships.forEach(relationship => {
+            rows.push({
+                rowType: "Relationship evidence",
+                hotspotRank: hotspot.hotspotRank,
+                startElementLabel: hotspot.startLabel,
+                endElementLabel: hotspot.endLabel,
+                elementLabels: hotspot.elements.map(element => element.label).join("; "),
+                elementTexts: hotspot.elements.map(element => element.text).join("; "),
+                relatedElementLabels: `${relationship.firstLabel}; ${relationship.secondLabel}`,
+                relatedElementTexts: `${relationship.firstText}; ${relationship.secondText}`,
+                observedOrder: `${relationship.secondLabel} before ${relationship.firstLabel}`,
+                patternDescription: `Expected ${relationship.firstLabel} before ${relationship.secondLabel}`,
+                reversedComparisons: relationship.reversedStudents,
+                eligibleComparisons: relationship.eligibleStudents,
+                pairwiseErrorRate: SequencerCore.formatNumber(relationship.reversalRate),
+                baselineErrorRate: SequencerCore.formatNumber(hotspot.baselineErrorRate),
+                excessRate: SequencerCore.formatNumber(relationship.reversalRate - hotspot.baselineErrorRate),
+                impactRate: SequencerCore.formatNumber(calculateExportImpactRate(relationship.reversedStudents)),
+                affectedStudents: "",
+                eligibleStudents: "",
+                affectedRate: "",
+                priorityScore: ""
+            });
+        });
+
+        hotspot.commonIncorrectOrders.forEach(pattern => {
+            rows.push({
+                rowType: "Common relative order",
+                hotspotRank: hotspot.hotspotRank,
+                startElementLabel: hotspot.startLabel,
+                endElementLabel: hotspot.endLabel,
+                elementLabels: hotspot.elements.map(element => element.label).join("; "),
+                elementTexts: hotspot.elements.map(element => element.text).join("; "),
+                relatedElementLabels: "",
+                relatedElementTexts: "",
+                observedOrder: pattern.labels.join(" -> "),
+                patternDescription: pattern.description,
+                reversedComparisons: "",
+                eligibleComparisons: "",
+                pairwiseErrorRate: "",
+                baselineErrorRate: "",
+                excessRate: "",
+                impactRate: "",
+                affectedStudents: pattern.count,
+                eligibleStudents: hotspot.eligibleStudents,
+                affectedRate: SequencerCore.formatNumber(pattern.rate),
+                priorityScore: ""
+            });
+        });
+    });
+
+    return rows;
+}
+
+function calculateExportImpactRate(count) {
+    return classReport.totalRelationshipErrors > 0
+        ? count / classReport.totalRelationshipErrors * 100
+        : NaN;
 }
 
 function createSequenceSegmentExportRows() {
@@ -1760,6 +1963,7 @@ async function exportClassReport() {
             : allResults.filter(row => row.status !== "Error");
 
         zip.file("class_overview.csv", convertToCSV(createOverviewExportRows()));
+        zip.file("confusion_hotspots.csv", convertToCSV(createHotspotExportRows()));
         zip.file("sequence_segments.csv", convertToCSV(createSequenceSegmentExportRows()));
         zip.file("element_confusion.csv", convertToCSV(createElementExportRows()));
         zip.file("relationship_errors.csv", convertToCSV(createRelationshipExportRows()));

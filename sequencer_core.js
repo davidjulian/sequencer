@@ -536,9 +536,220 @@
         };
     }
 
+    function createRelationshipGrid(relationships, elementCount) {
+        const grid = Array.from({ length: elementCount }, () => []);
+
+        relationships.forEach(relationship => {
+            grid[relationship.firstIndex][relationship.secondIndex] = relationship;
+        });
+
+        return grid;
+    }
+
+    function getInternalRelationships(relationshipGrid, startIndex, endIndex) {
+        const internalRelationships = [];
+
+        for (let firstIndex = startIndex; firstIndex < endIndex; firstIndex++) {
+            for (let secondIndex = firstIndex + 1; secondIndex <= endIndex; secondIndex++) {
+                const relationship = relationshipGrid[firstIndex]?.[secondIndex];
+
+                if (relationship) {
+                    internalRelationships.push(relationship);
+                }
+            }
+        }
+
+        return internalRelationships;
+    }
+
+    function summarizeRelationship(relationship) {
+        return {
+            firstIndex: relationship.firstIndex,
+            secondIndex: relationship.secondIndex,
+            firstLabel: relationship.firstLabel,
+            firstText: relationship.firstText,
+            secondLabel: relationship.secondLabel,
+            secondText: relationship.secondText,
+            eligibleStudents: relationship.eligibleStudents,
+            reversedStudents: relationship.reversedStudents,
+            reversalRate: relationship.reversalRate,
+            isImmediate: relationship.isImmediate
+        };
+    }
+
+    function calculateRelationshipTotals(relationships) {
+        return relationships.reduce((totals, relationship) => ({
+            eligibleComparisons: totals.eligibleComparisons + relationship.eligibleStudents,
+            reversedComparisons: totals.reversedComparisons + relationship.reversedStudents
+        }), {
+            eligibleComparisons: 0,
+            reversedComparisons: 0
+        });
+    }
+
+    function analyzeConfusionHotspots(elements, relationships, sequences, reference, options) {
+        const maxHotspotElements = options.maxHotspotElements;
+        const maxHotspots = options.maxHotspots;
+        const relationshipErrorThreshold = options.relationshipErrorThreshold;
+        const minImpactRate = 2;
+        const minExcessRate = 5;
+        const minReversedComparisons = 2;
+        const totals = calculateRelationshipTotals(relationships);
+        const baselineErrorRate = calculateRate(totals.reversedComparisons, totals.eligibleComparisons);
+        const baselineProbability = Number.isFinite(baselineErrorRate) ? baselineErrorRate / 100 : 0;
+
+        if (
+            elements.length < 2
+            || totals.eligibleComparisons === 0
+            || totals.reversedComparisons === 0
+        ) {
+            return {
+                totalRelationshipErrors: totals.reversedComparisons,
+                totalEligibleRelationships: totals.eligibleComparisons,
+                overallRelationshipErrorRate: baselineErrorRate,
+                confusionHotspots: []
+            };
+        }
+
+        const relationshipGrid = createRelationshipGrid(relationships, elements.length);
+        const minimumErrorRate = Math.max(
+            relationshipErrorThreshold,
+            baselineErrorRate + minExcessRate,
+            baselineErrorRate * 1.15
+        );
+        const candidates = [];
+
+        for (let startIndex = 0; startIndex < elements.length - 1; startIndex++) {
+            const lastEndIndex = Math.min(elements.length - 1, startIndex + maxHotspotElements - 1);
+
+            for (let endIndex = startIndex + 1; endIndex <= lastEndIndex; endIndex++) {
+                const internalRelationships = getInternalRelationships(relationshipGrid, startIndex, endIndex);
+                const rangeTotals = calculateRelationshipTotals(internalRelationships);
+
+                if (
+                    rangeTotals.eligibleComparisons === 0
+                    || rangeTotals.reversedComparisons < minReversedComparisons
+                ) {
+                    continue;
+                }
+
+                const pairwiseErrorRate = calculateRate(
+                    rangeTotals.reversedComparisons,
+                    rangeTotals.eligibleComparisons
+                );
+                const impactRate = calculateRate(rangeTotals.reversedComparisons, totals.reversedComparisons);
+                const excessRate = pairwiseErrorRate - baselineErrorRate;
+                const expectedReversals = rangeTotals.eligibleComparisons * baselineProbability;
+                const excessReversals = rangeTotals.reversedComparisons - expectedReversals;
+                const standardDeviation = Math.sqrt(
+                    rangeTotals.eligibleComparisons
+                    * baselineProbability
+                    * (1 - baselineProbability)
+                );
+                const zScore = standardDeviation > 0 ? excessReversals / standardDeviation : 0;
+                const priorityScore = zScore * Math.sqrt(Math.max(impactRate, 0) / 100);
+
+                if (
+                    pairwiseErrorRate < minimumErrorRate
+                    || impactRate < minImpactRate
+                    || excessReversals <= 0
+                    || priorityScore <= 0
+                ) {
+                    continue;
+                }
+
+                candidates.push({
+                    startIndex,
+                    endIndex,
+                    internalRelationships,
+                    reversedComparisons: rangeTotals.reversedComparisons,
+                    eligibleComparisons: rangeTotals.eligibleComparisons,
+                    pairwiseErrorRate,
+                    baselineErrorRate,
+                    excessRate,
+                    excessReversals,
+                    impactRate,
+                    zScore,
+                    priorityScore
+                });
+            }
+        }
+
+        candidates.sort((first, second) => (
+            second.priorityScore - first.priorityScore
+            || second.impactRate - first.impactRate
+            || second.pairwiseErrorRate - first.pairwiseErrorRate
+            || (first.endIndex - first.startIndex) - (second.endIndex - second.startIndex)
+        ));
+
+        const selected = [];
+        const coveredIndexes = new Set();
+
+        candidates.forEach(candidate => {
+            if (selected.length >= maxHotspots) {
+                return;
+            }
+
+            for (let index = candidate.startIndex; index <= candidate.endIndex; index++) {
+                if (coveredIndexes.has(index)) {
+                    return;
+                }
+            }
+
+            selected.push(candidate);
+            for (let index = candidate.startIndex; index <= candidate.endIndex; index++) {
+                coveredIndexes.add(index);
+            }
+        });
+
+        return {
+            totalRelationshipErrors: totals.reversedComparisons,
+            totalEligibleRelationships: totals.eligibleComparisons,
+            overallRelationshipErrorRate: baselineErrorRate,
+            confusionHotspots: selected.map((hotspot, index) => {
+                const rangeAnalysis = analyzeSequenceRange(hotspot, elements, sequences, reference, true);
+                const hotspotElements = elements.slice(hotspot.startIndex, hotspot.endIndex + 1);
+
+                return {
+                    ...rangeAnalysis,
+                    hotspotRank: index + 1,
+                    relationshipCount: hotspot.internalRelationships.length,
+                    reversedComparisons: hotspot.reversedComparisons,
+                    eligibleComparisons: hotspot.eligibleComparisons,
+                    pairwiseErrorRate: hotspot.pairwiseErrorRate,
+                    baselineErrorRate: hotspot.baselineErrorRate,
+                    excessRate: hotspot.excessRate,
+                    excessReversals: hotspot.excessReversals,
+                    impactRate: hotspot.impactRate,
+                    zScore: hotspot.zScore,
+                    priorityScore: hotspot.priorityScore,
+                    topRelationships: hotspot.internalRelationships
+                        .filter(relationship => relationship.reversedStudents > 0)
+                        .map(summarizeRelationship)
+                        .sort((first, second) => (
+                            second.reversedStudents - first.reversedStudents
+                            || second.reversalRate - first.reversalRate
+                        )),
+                    elementDirections: hotspotElements.map(element => ({
+                        index: element.index,
+                        label: element.label,
+                        text: element.text,
+                        tooEarlyStudents: element.tooEarlyStudents,
+                        tooEarlyEligibleStudents: element.tooEarlyEligibleStudents,
+                        tooEarlyRate: element.tooEarlyRate,
+                        tooLateStudents: element.tooLateStudents,
+                        tooLateEligibleStudents: element.tooLateEligibleStudents,
+                        tooLateRate: element.tooLateRate
+                    }))
+                };
+            })
+        };
+    }
+
     function analyzeSequenceSegments(elements, relationships, sequences, reference) {
         const relationshipErrorThreshold = 15;
         const maxSegmentElements = 6;
+        const maxHotspots = 5;
         const significantRelationships = relationships.filter(relationship => (
             relationship.eligibleStudents > 0
             && relationship.reversalRate >= relationshipErrorThreshold
@@ -610,12 +821,20 @@
         sequenceSegments.sort((first, second) => second.affectedRate - first.affectedRate);
         broadSequenceConfusion.sort((first, second) => second.affectedRate - first.affectedRate);
 
+        const hotspotAnalysis = analyzeConfusionHotspots(elements, relationships, sequences, reference, {
+            relationshipErrorThreshold,
+            maxHotspotElements: maxSegmentElements,
+            maxHotspots
+        });
+
         return {
             relationshipErrorThreshold,
             maxSegmentElements,
+            maxHotspots,
             sequenceSegments,
             broadSequenceConfusion,
-            isolatedRelationshipErrors
+            isolatedRelationshipErrors,
+            ...hotspotAnalysis
         };
     }
 
