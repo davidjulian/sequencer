@@ -42,21 +42,99 @@
         return value;
     }
 
+    function getOptionalStringArray(data, fieldName) {
+        if (data[fieldName] == null) {
+            return null;
+        }
+
+        return getStringArray(data, fieldName, true);
+    }
+
+    function getReferenceVariantId(value, fallbackId) {
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+            const id = value.id || value.name || value.label;
+
+            if (typeof id === "string" && id.trim()) {
+                return id.trim();
+            }
+        }
+
+        return fallbackId;
+    }
+
+    function getReferenceVariantSequence(value, fieldName) {
+        if (Array.isArray(value)) {
+            if (!value.every(item => typeof item === "string")) {
+                throw new Error(`${fieldName} must contain only text values.`);
+            }
+
+            return value;
+        }
+
+        if (value && typeof value === "object") {
+            return getStringArray(value, "sequence", true);
+        }
+
+        throw new Error(`${fieldName} must be an array or an object with a sequence array.`);
+    }
+
+    function getRawReferenceVariants(data, primarySequence) {
+        const alternateSequences = data.referenceSequences || data.acceptableSequences || data.sequences;
+        const variants = primarySequence
+            ? [{
+                id: getReferenceVariantId(data, "reference_1"),
+                sequence: primarySequence
+            }]
+            : [];
+
+        if (alternateSequences == null) {
+            return variants;
+        }
+
+        if (!Array.isArray(alternateSequences)) {
+            throw new Error("referenceSequences must be an array when provided.");
+        }
+
+        alternateSequences.forEach((value, index) => {
+            const sequence = getReferenceVariantSequence(value, `referenceSequences[${index}]`);
+            const isPrimaryDuplicate = primarySequence
+                && sequence.length === primarySequence.length
+                && sequence.every((item, itemIndex) => item === primarySequence[itemIndex]);
+
+            if (!isPrimaryDuplicate) {
+                variants.push({
+                    id: getReferenceVariantId(value, `reference_${variants.length + 1}`),
+                    sequence
+                });
+            }
+        });
+
+        return variants;
+    }
+
     function normalizeReferenceData(data) {
         if (!data || typeof data !== "object") {
             throw new Error("Reference file must contain a sequence object.");
         }
 
         const startingElements = getStringArray(data, "startingElements", false);
-        const sequence = getStringArray(data, "sequence", true);
+        const primarySequence = getOptionalStringArray(data, "sequence");
         const endingElements = getStringArray(data, "endingElements", false);
         const distractors = getStringArray(data, "distractors", false);
+        const referenceSequences = getRawReferenceVariants(data, primarySequence);
+
+        if (referenceSequences.length === 0) {
+            throw new Error("Reference file must contain a sequence array.");
+        }
+
+        const sequence = primarySequence || referenceSequences[0].sequence;
 
         return {
             startingElements,
             sequence,
             endingElements,
             distractors,
+            referenceSequences,
             numberOfDistractors: distractors.length
         };
     }
@@ -340,6 +418,346 @@
         };
     }
 
+    function percentToUnitScore(value) {
+        return Number.isFinite(value) ? value / 100 : NaN;
+    }
+
+    function clampUnitScore(value) {
+        return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : NaN;
+    }
+
+    function filterSequenceToItems(sequence, reference) {
+        const expectedItems = new Set(reference);
+        return sequence.filter(item => expectedItems.has(item));
+    }
+
+    function calculateSelectionCounts(reference, sequence, distractors) {
+        const expectedItems = new Set(reference);
+        const distractorItems = new Set(distractors);
+        const counts = countValues(sequence);
+
+        return {
+            required_present_count: reference.filter(item => (counts.get(item) || 0) > 0).length,
+            required_omitted_count: reference.filter(item => (counts.get(item) || 0) === 0).length,
+            distractor_included_count: sequence.filter(item => distractorItems.has(item)).length,
+            invalid_item_count: sequence.filter(item => !expectedItems.has(item) && !distractorItems.has(item)).length
+        };
+    }
+
+    function calculateAdjacentPairPreservationScore(reference, sequence) {
+        const totalPairs = Math.max(reference.length - 1, 0);
+
+        if (totalPairs === 0) {
+            const isExactMatch = reference.length === sequence.length
+                && reference.every((item, index) => item === sequence[index]);
+
+            return {
+                raw: 0,
+                norm: isExactMatch ? 1 : 0
+            };
+        }
+
+        const submittedPairs = new Set(extractAdjacentPairs(sequence).map(([first, second]) => pairKey(first, second)));
+        const raw = extractAdjacentPairs(reference)
+            .filter(([first, second]) => submittedPairs.has(pairKey(first, second)))
+            .length;
+
+        return {
+            raw,
+            norm: raw / totalPairs
+        };
+    }
+
+    function calculateLongestCommonSubsequenceScore(reference, sequence) {
+        if (reference.length === 0) {
+            return {
+                raw: 0,
+                norm: sequence.length === 0 ? 1 : 0
+            };
+        }
+
+        let previous = Array(sequence.length + 1).fill(0);
+
+        reference.forEach(referenceItem => {
+            const current = Array(sequence.length + 1).fill(0);
+
+            sequence.forEach((sequenceItem, sequenceIndex) => {
+                current[sequenceIndex + 1] = referenceItem === sequenceItem
+                    ? previous[sequenceIndex] + 1
+                    : Math.max(previous[sequenceIndex + 1], current[sequenceIndex]);
+            });
+
+            previous = current;
+        });
+
+        const raw = previous[sequence.length];
+
+        return {
+            raw,
+            norm: raw / reference.length
+        };
+    }
+
+    function calculatePositionalScore(reference, sequence) {
+        if (reference.length === 0) {
+            return {
+                raw: 0,
+                norm: sequence.length === 0 ? 1 : 0
+            };
+        }
+
+        const raw = reference.filter((item, index) => sequence[index] === item).length;
+
+        return {
+            raw,
+            norm: raw / reference.length
+        };
+    }
+
+    function calculateDamerauLevenshteinDistance(reference, sequence) {
+        const rows = Array.from({ length: reference.length + 1 }, () => Array(sequence.length + 1).fill(0));
+
+        for (let index = 0; index <= reference.length; index++) {
+            rows[index][0] = index;
+        }
+
+        for (let index = 0; index <= sequence.length; index++) {
+            rows[0][index] = index;
+        }
+
+        for (let referenceIndex = 1; referenceIndex <= reference.length; referenceIndex++) {
+            for (let sequenceIndex = 1; sequenceIndex <= sequence.length; sequenceIndex++) {
+                const substitutionCost = reference[referenceIndex - 1] === sequence[sequenceIndex - 1] ? 0 : 1;
+                let distance = Math.min(
+                    rows[referenceIndex - 1][sequenceIndex] + 1,
+                    rows[referenceIndex][sequenceIndex - 1] + 1,
+                    rows[referenceIndex - 1][sequenceIndex - 1] + substitutionCost
+                );
+
+                if (
+                    referenceIndex > 1
+                    && sequenceIndex > 1
+                    && reference[referenceIndex - 1] === sequence[sequenceIndex - 2]
+                    && reference[referenceIndex - 2] === sequence[sequenceIndex - 1]
+                ) {
+                    distance = Math.min(distance, rows[referenceIndex - 2][sequenceIndex - 2] + 1);
+                }
+
+                rows[referenceIndex][sequenceIndex] = distance;
+            }
+        }
+
+        return rows[reference.length][sequence.length];
+    }
+
+    function calculateEditDistanceScore(reference, sequence) {
+        const raw = calculateDamerauLevenshteinDistance(reference, sequence);
+        const denominator = Math.max(reference.length, sequence.length);
+
+        return {
+            raw,
+            norm: denominator === 0 ? 1 : clampUnitScore(1 - (raw / denominator))
+        };
+    }
+
+    function calculateInversionDistanceScore(reference, sequence) {
+        const totalPairs = reference.length * (reference.length - 1) / 2;
+
+        if (totalPairs === 0) {
+            const isExactMatch = reference.length === sequence.length
+                && reference.every((item, index) => item === sequence[index]);
+
+            return {
+                raw: 0,
+                norm: isExactMatch ? 1 : 0
+            };
+        }
+
+        const positions = new Map();
+        sequence.forEach((item, index) => {
+            if (!positions.has(item)) {
+                positions.set(item, index);
+            }
+        });
+
+        let raw = 0;
+
+        for (let firstIndex = 0; firstIndex < reference.length - 1; firstIndex++) {
+            for (let secondIndex = firstIndex + 1; secondIndex < reference.length; secondIndex++) {
+                const firstPosition = positions.get(reference[firstIndex]);
+                const secondPosition = positions.get(reference[secondIndex]);
+
+                if (
+                    Number.isInteger(firstPosition)
+                    && Number.isInteger(secondPosition)
+                    && firstPosition > secondPosition
+                ) {
+                    raw++;
+                }
+            }
+        }
+
+        return {
+            raw,
+            norm: clampUnitScore(1 - (raw / totalPairs))
+        };
+    }
+
+    function calculatePairwiseRankingScore(reference, sequence) {
+        const score = calculatePrecedencePairScore(reference, sequence);
+
+        return {
+            raw: score.correctPairs,
+            total: score.totalPairs,
+            norm: percentToUnitScore(score.score)
+        };
+    }
+
+    function calculateCurrentSequencerScore(reference, sequence) {
+        const adjacentPairScore = calculateAdjacentPairScore(reference, sequence);
+        const precedencePairScore = calculatePrecedencePairScore(reference, sequence);
+        const weightedOrderScore = calculateWeightedOrderScore(adjacentPairScore.adjacentPairScore, precedencePairScore.score);
+
+        return {
+            raw: weightedOrderScore,
+            norm: percentToUnitScore(weightedOrderScore)
+        };
+    }
+
+    const additionalScoringMethods = [
+        {
+            key: "sequencer_current",
+            rawField: "sequencer_current_raw",
+            normField: "sequencer_current_norm",
+            calculate: calculateCurrentSequencerScore
+        },
+        {
+            key: "adjacent_pairs",
+            rawField: "adjacent_pairs_raw",
+            normField: "adjacent_pairs_norm",
+            calculate: calculateAdjacentPairPreservationScore
+        },
+        {
+            key: "lcs",
+            rawField: "lcs_length",
+            normField: "lcs_norm",
+            calculate: calculateLongestCommonSubsequenceScore
+        },
+        {
+            key: "positional",
+            rawField: "positional_raw",
+            normField: "positional_norm",
+            calculate: calculatePositionalScore
+        },
+        {
+            key: "edit_distance",
+            rawField: "edit_distance_raw",
+            normField: "edit_distance_norm",
+            calculate: calculateEditDistanceScore
+        },
+        {
+            key: "swap_distance",
+            rawField: "inversion_count",
+            normField: "swap_distance_norm",
+            calculate: calculateInversionDistanceScore
+        },
+        {
+            key: "pairwise",
+            rawField: "pairwise_correct_raw",
+            totalField: "pairwise_total",
+            normField: "pairwise_norm",
+            calculate: calculatePairwiseRankingScore
+        }
+    ];
+
+    const additionalScoringVariants = [
+        {
+            key: "required_only",
+            suffix: "labeled_required_only",
+            prepareSequence: (sequence, reference) => filterSequenceToItems(sequence, reference)
+        },
+        {
+            key: "full_sequence",
+            suffix: "labeled_full_sequence",
+            prepareSequence: sequence => sequence
+        }
+    ];
+
+    function isBetterScoringResult(candidate, currentBest) {
+        if (!currentBest) {
+            return true;
+        }
+
+        const candidateNorm = candidate.score.norm;
+        const currentNorm = currentBest.score.norm;
+
+        if (Number.isFinite(candidateNorm) && !Number.isFinite(currentNorm)) {
+            return true;
+        }
+
+        if (!Number.isFinite(candidateNorm) && Number.isFinite(currentNorm)) {
+            return false;
+        }
+
+        if (candidateNorm !== currentNorm) {
+            return candidateNorm > currentNorm;
+        }
+
+        return String(candidate.referenceId).localeCompare(String(currentBest.referenceId)) < 0;
+    }
+
+    function getScoringReferenceVariants(reference) {
+        return reference.referenceSequences.map(variant => ({
+            id: variant.id,
+            sequence: stripFixedElements(variant.sequence, reference.startingElements, reference.endingElements)
+        }));
+    }
+
+    function calculateAdditionalScoring(reference, sequenceMiddle) {
+        const referenceVariants = getScoringReferenceVariants(reference);
+        const output = {};
+        const bestReferenceScoreByMethod = {};
+
+        additionalScoringVariants.forEach(variant => {
+            additionalScoringMethods.forEach(method => {
+                let best = null;
+
+                referenceVariants.forEach(referenceVariant => {
+                    const scoringSequence = variant.prepareSequence(sequenceMiddle, referenceVariant.sequence);
+                    const score = method.calculate(referenceVariant.sequence, scoringSequence);
+                    const candidate = {
+                        referenceId: referenceVariant.id,
+                        score
+                    };
+
+                    if (isBetterScoringResult(candidate, best)) {
+                        best = candidate;
+                    }
+                });
+
+                const suffix = variant.suffix;
+                output[`${method.rawField}_${suffix}`] = best.score.raw;
+                output[`${method.normField}_${suffix}`] = best.score.norm;
+                output[`${method.key}_best_reference_id_${suffix}`] = best.referenceId;
+
+                if (method.totalField) {
+                    output[`${method.totalField}_${suffix}`] = best.score.total;
+                }
+
+                bestReferenceScoreByMethod[`${method.key}_${suffix}`] = {
+                    referenceId: best.referenceId,
+                    raw: best.score.raw,
+                    total: best.score.total,
+                    norm: best.score.norm
+                };
+            });
+        });
+
+        output.best_reference_id = output.sequencer_current_best_reference_id_labeled_full_sequence;
+        output.best_reference_score_by_method = bestReferenceScoreByMethod;
+        return output;
+    }
+
     function calculateWeightedOrderScore(adjacentPairScore, precedenceScore) {
         return Number.isFinite(precedenceScore)
             ? (adjacentPairScore + precedenceScore) / 2
@@ -352,9 +770,11 @@
         const referenceMiddle = stripFixedElements(reference.sequence, reference.startingElements, reference.endingElements);
         const sequenceMiddle = stripFixedElements(sequence, reference.startingElements, reference.endingElements);
         const itemComparison = compareExpectedItems(referenceMiddle, sequenceMiddle);
+        const selectionCounts = calculateSelectionCounts(referenceMiddle, sequenceMiddle, reference.distractors);
         const adjacentPairScore = calculateAdjacentPairScore(referenceMiddle, sequenceMiddle);
         const precedencePairScore = calculatePrecedencePairScore(referenceMiddle, sequenceMiddle);
         const weightedOrderScore = calculateWeightedOrderScore(adjacentPairScore.adjacentPairScore, precedencePairScore.score);
+        const additionalScoring = calculateAdditionalScoring(reference, sequenceMiddle);
 
         return {
             points: adjacentPairScore.points,
@@ -364,7 +784,10 @@
             precedencePairsTotal: precedencePairScore.totalPairs,
             precedenceScore: precedencePairScore.score,
             weightedOrderScore,
-            itemComparison
+            itemComparison,
+            selectionCounts,
+            ...selectionCounts,
+            ...additionalScoring
         };
     }
 
@@ -1233,7 +1656,14 @@
         analyzeClass,
         analyzeSequence,
         calculateAdjacentPairScore,
+        calculateAdjacentPairPreservationScore,
+        calculateDamerauLevenshteinDistance,
+        calculateEditDistanceScore,
+        calculateInversionDistanceScore,
+        calculateLongestCommonSubsequenceScore,
+        calculatePairwiseRankingScore,
         calculatePrecedencePairScore,
+        calculatePositionalScore,
         compareExpectedItems,
         findDuplicateElements,
         findDuplicates,

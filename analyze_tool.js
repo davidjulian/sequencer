@@ -28,10 +28,78 @@ const reportSortState = {
     students: { key: "filename", direction: "asc" }
 };
 
+const SCORE_VARIANT_SUFFIXES = {
+    requiredOnly: "labeled_required_only",
+    fullSequence: "labeled_full_sequence"
+};
+
+const ADDITIONAL_SCORE_METHODS = [
+    {
+        label: "Current Sequencer",
+        rawField: "sequencer_current_raw",
+        normField: "sequencer_current_norm",
+        referenceField: "sequencer_current_best_reference_id"
+    },
+    {
+        label: "Adjacent Pairs",
+        rawField: "adjacent_pairs_raw",
+        normField: "adjacent_pairs_norm",
+        referenceField: "adjacent_pairs_best_reference_id"
+    },
+    {
+        label: "Longest Common Subsequence",
+        rawField: "lcs_length",
+        normField: "lcs_norm",
+        referenceField: "lcs_best_reference_id"
+    },
+    {
+        label: "Position",
+        rawField: "positional_raw",
+        normField: "positional_norm",
+        referenceField: "positional_best_reference_id"
+    },
+    {
+        label: "Edit Distance",
+        rawField: "edit_distance_raw",
+        normField: "edit_distance_norm",
+        referenceField: "edit_distance_best_reference_id"
+    },
+    {
+        label: "Adjacent Swaps",
+        rawField: "inversion_count",
+        normField: "swap_distance_norm",
+        referenceField: "swap_distance_best_reference_id"
+    },
+    {
+        label: "Pairwise Relative Order",
+        rawField: "pairwise_correct_raw",
+        totalField: "pairwise_total",
+        normField: "pairwise_norm",
+        referenceField: "pairwise_best_reference_id"
+    }
+];
+
+const ADDITIONAL_SCORE_EXPORT_FIELDS = ADDITIONAL_SCORE_METHODS.flatMap(method => (
+    Object.values(SCORE_VARIANT_SUFFIXES).flatMap(suffix => {
+        const fields = [
+            `${method.rawField}_${suffix}`,
+            `${method.normField}_${suffix}`,
+            `${method.referenceField}_${suffix}`
+        ];
+
+        if (method.totalField) {
+            fields.splice(1, 0, `${method.totalField}_${suffix}`);
+        }
+
+        return fields;
+    })
+));
+
 document.addEventListener("DOMContentLoaded", function() {
     SequencerUI.setupDropZone({
         dropZoneId: "referenceFileDropZone",
         inputId: "reference-file",
+        multiple: true,
         pickerId: "sequencer-reference"
     });
     SequencerUI.setupDropZone({
@@ -107,10 +175,10 @@ async function processFiles() {
         return;
     }
 
-    const referenceFile = document.getElementById("reference-file").files[0];
-    const sequenceFiles = Array.from(document.getElementById("sequence-files").files);
+    const referenceFiles = SequencerUI.getSelectedFiles("reference-file");
+    const sequenceFiles = SequencerUI.getSelectedFiles("sequence-files");
 
-    if (!referenceFile || sequenceFiles.length === 0) {
+    if (referenceFiles.length === 0 || sequenceFiles.length === 0) {
         alert("Please select the reference and student files before generating a report.");
         return;
     }
@@ -122,17 +190,19 @@ async function processFiles() {
     announceAnalysisStatus(`Processing ${sequenceFiles.length} student ${sequenceFiles.length === 1 ? "file" : "files"}.`);
 
     try {
-        referenceFileNameRoot = getReferenceFileNameRoot(referenceFile.name);
-        const referenceData = SequencerCore.normalizeReferenceData(
-            SequencerCore.parseJson(await referenceFile.text(), referenceFile.name)
-        );
+        const referenceBundle = await loadReferenceBundle(referenceFiles);
+        referenceFileNameRoot = referenceBundle.reportNameRoot;
 
-        processedFileResults = await Promise.all(sequenceFiles.map(file => processStudentFile(file, referenceData)));
+        processedFileResults = await Promise.all(sequenceFiles.map(file => processStudentFile(file, referenceBundle.scoringReferenceData)));
         const validResults = processedFileResults.filter(fileResult => !fileResult.error);
         classReport = SequencerCore.analyzeClass(
-            referenceData,
+            referenceBundle.diagnosticReferenceData,
             validResults.map(fileResult => fileResult.sequence)
         );
+        classReport.referenceFiles = referenceBundle.referenceFiles;
+        classReport.scoringReferenceCount = referenceBundle.scoringReferenceCount;
+        classReport.diagnosticReferenceFileName = referenceBundle.diagnosticReferenceFileName;
+        classReport.diagnosticReferenceId = referenceBundle.diagnosticReferenceId;
         allResults = processedFileResults.map(convertResultToRow);
         renderClassReport();
 
@@ -171,6 +241,127 @@ async function processStudentFile(file, referenceData) {
             error: error.message
         };
     }
+}
+
+async function loadReferenceBundle(referenceFiles) {
+    const references = [];
+
+    for (const file of referenceFiles) {
+        const root = getReferenceFileNameRoot(file.name);
+        const data = SequencerCore.normalizeReferenceData(
+            SequencerCore.parseJson(await file.text(), file.name)
+        );
+
+        references.push({
+            filename: file.name,
+            root,
+            data
+        });
+    }
+
+    validateReferenceBundle(references);
+
+    const diagnosticReference = references[0];
+    const referenceSequences = [];
+
+    references.forEach(reference => {
+        reference.data.referenceSequences.forEach((variant, index) => {
+            referenceSequences.push({
+                id: createUploadedReferenceId(reference.root, variant.id, reference.data.referenceSequences.length, index),
+                sequence: variant.sequence
+            });
+        });
+    });
+
+    const scoringReferenceData = SequencerCore.normalizeReferenceData({
+        startingElements: diagnosticReference.data.startingElements,
+        endingElements: diagnosticReference.data.endingElements,
+        distractors: diagnosticReference.data.distractors,
+        referenceSequences
+    });
+
+    return {
+        diagnosticReferenceData: diagnosticReference.data,
+        diagnosticReferenceFileName: diagnosticReference.filename,
+        diagnosticReferenceId: referenceSequences[0]?.id || diagnosticReference.root,
+        scoringReferenceData,
+        scoringReferenceCount: referenceSequences.length,
+        referenceFiles: references.map(reference => ({
+            filename: reference.filename,
+            root: reference.root,
+            sequenceCount: reference.data.referenceSequences.length
+        })),
+        reportNameRoot: references.length === 1
+            ? diagnosticReference.root
+            : `${diagnosticReference.root}_plus_${references.length - 1}_references`
+    };
+}
+
+function createUploadedReferenceId(root, variantId, variantCount, index) {
+    if (variantCount === 1 || !variantId || variantId === "reference_1") {
+        return root;
+    }
+
+    return `${root}:${variantId || `reference_${index + 1}`}`;
+}
+
+function validateReferenceBundle(references) {
+    if (references.length === 0) {
+        throw new Error("Select at least one reference file.");
+    }
+
+    const diagnostic = references[0].data;
+    const expectedItems = getReferenceItemSet(diagnostic);
+    const expectedDistractors = getStringSet(diagnostic.distractors);
+
+    references.forEach(reference => {
+        const data = reference.data;
+
+        if (!arraysEqual(data.startingElements, diagnostic.startingElements)) {
+            throw new Error(`${reference.filename} has different fixed starting elements than ${references[0].filename}.`);
+        }
+
+        if (!arraysEqual(data.endingElements, diagnostic.endingElements)) {
+            throw new Error(`${reference.filename} has different fixed ending elements than ${references[0].filename}.`);
+        }
+
+        if (!setsEqual(getStringSet(data.distractors), expectedDistractors)) {
+            throw new Error(`${reference.filename} has different distractors than ${references[0].filename}.`);
+        }
+
+        data.referenceSequences.forEach((variant, index) => {
+            const variantItems = getStringSet(
+                SequencerCore.stripFixedElements(variant.sequence, data.startingElements, data.endingElements)
+            );
+
+            if (!setsEqual(variantItems, expectedItems)) {
+                const label = data.referenceSequences.length === 1 ? reference.filename : `${reference.filename} reference ${index + 1}`;
+                throw new Error(`${label} must contain the same scored sequence items as ${references[0].filename}.`);
+            }
+        });
+    });
+}
+
+function getReferenceItemSet(referenceData) {
+    return getStringSet(
+        SequencerCore.stripFixedElements(referenceData.sequence, referenceData.startingElements, referenceData.endingElements)
+    );
+}
+
+function getStringSet(values) {
+    return new Set(values);
+}
+
+function arraysEqual(first, second) {
+    return first.length === second.length && first.every((value, index) => value === second[index]);
+}
+
+function setsEqual(first, second) {
+    if (first.size !== second.size) {
+        return false;
+    }
+
+    return [...first].every(value => second.has(value));
 }
 
 function setProcessingState(processing) {
@@ -237,7 +428,7 @@ function clearAllAnalysis() {
         return;
     }
 
-    SequencerUI.clearFileSelection("reference-file", "referenceFileDropZone", "No file selected");
+    SequencerUI.clearFileSelection("reference-file", "referenceFileDropZone", "No files selected");
     SequencerUI.clearFileSelection("sequence-files", "studentFilesDropZone", "No files selected");
     referenceFileNameRoot = "";
     clearAnalysisResults("Reference file, student files, and report cleared.");
@@ -262,15 +453,40 @@ function getReferenceFileNameRoot(filename) {
         .replace(/\.seq$/i, "") || "sequencer";
 }
 
+function parseStudentFilename(filename) {
+    const baseName = String(filename || "").replace(/\.[^.]*$/, "");
+    const match = baseName.match(/^(.+?)[\s_-]*(\d{7})(?=$|[\s_.-])/);
+
+    if (!match) {
+        return {
+            studentName: "",
+            canvasId: ""
+        };
+    }
+
+    return {
+        studentName: match[1]
+            .replace(/[_]+/g, " ")
+            .replace(/\s+/g, " ")
+            .replace(/[\s_-]+$/g, "")
+            .trim(),
+        canvasId: match[2]
+    };
+}
+
 function renderClassReport() {
     if (!classReport) {
         return;
     }
 
     const invalidCount = processedFileResults.filter(fileResult => fileResult.error).length;
+    const scoringReferenceCount = classReport.scoringReferenceCount || 1;
+    const diagnosticReference = classReport.diagnosticReferenceFileName || referenceFileNameRoot;
     const summary = document.getElementById("class-report-summary");
     summary.textContent = `${referenceFileNameRoot}: ${classReport.submissionCount} valid ${classReport.submissionCount === 1 ? "submission" : "submissions"}, `
         + `${invalidCount} invalid ${invalidCount === 1 ? "file" : "files"}, `
+        + `${scoringReferenceCount} scoring ${scoringReferenceCount === 1 ? "reference" : "references"}, `
+        + `class diagnostics use ${diagnosticReference}, `
         + `${classReport.elementCount} sequence ${classReport.elementCount === 1 ? "element" : "elements"}, `
         + `${classReport.distractorCount} ${classReport.distractorCount === 1 ? "distractor" : "distractors"}, `
         + `${classReport.confusionHotspots.length} key confusion ${classReport.confusionHotspots.length === 1 ? "hotspot" : "hotspots"} identified.`;
@@ -1147,9 +1363,12 @@ function renderStudentResults() {
     ));
 
     const rows = processedFileResults.map(fileResult => {
+        const studentMetadata = parseStudentFilename(fileResult.filename);
+
         if (fileResult.error) {
             return {
                 ...fileResult,
+                ...studentMetadata,
                 status: "Error",
                 itemFlags: "",
                 adjacentPairScore: NaN,
@@ -1160,6 +1379,7 @@ function renderStudentResults() {
 
         return {
             ...fileResult,
+            ...studentMetadata,
             status: "OK",
             itemFlags: formatItemFlags(fileResult.result.itemComparison),
             adjacentPairScore: fileResult.result.adjacentPairScore,
@@ -1175,6 +1395,16 @@ function renderStudentResults() {
         rows: paginatedRows.items,
         pagination: paginatedRows,
         columns: [
+            {
+                label: "Student Name",
+                sortKey: "studentName",
+                render: row => row.studentName || ""
+            },
+            {
+                label: "Canvas ID",
+                sortKey: "canvasId",
+                render: row => row.canvasId || ""
+            },
             {
                 label: "Filename",
                 sortKey: "filename",
@@ -1233,7 +1463,67 @@ function createStudentDetails(row) {
             list.appendChild(makeElement("dd", "", description));
         });
         details.appendChild(list);
+        details.appendChild(createSelectionCountsSummary(result));
+        details.appendChild(createAdditionalScoringTable(result));
     });
+}
+
+function createSelectionCountsSummary(result) {
+    const section = makeElement("section", "student-detail-section");
+    section.appendChild(makeElement("h4", "", "Selection Counts"));
+    const list = document.createElement("dl");
+
+    [
+        ["Required present", result.required_present_count],
+        ["Required omitted", result.required_omitted_count],
+        ["Distractors included", result.distractor_included_count],
+        ["Invalid items", result.invalid_item_count]
+    ].forEach(([term, description]) => {
+        list.appendChild(makeElement("dt", "", term));
+        list.appendChild(makeElement("dd", "", description));
+    });
+
+    section.appendChild(list);
+    return section;
+}
+
+function createAdditionalScoringTable(result) {
+    const section = makeElement("section", "student-detail-section");
+    section.appendChild(makeElement("h4", "", "Additional Ordering Scores"));
+    section.appendChild(createReportTable({
+        rows: ADDITIONAL_SCORE_METHODS,
+        columns: [
+            {
+                label: "Method",
+                render: method => method.label
+            },
+            {
+                label: "Required Raw",
+                render: method => formatScoreRaw(result, method, SCORE_VARIANT_SUFFIXES.requiredOnly)
+            },
+            {
+                label: "Required Norm",
+                render: method => formatUnitScore(result[`${method.normField}_${SCORE_VARIANT_SUFFIXES.requiredOnly}`])
+            },
+            {
+                label: "Full Raw",
+                render: method => formatScoreRaw(result, method, SCORE_VARIANT_SUFFIXES.fullSequence)
+            },
+            {
+                label: "Full Norm",
+                render: method => formatUnitScore(result[`${method.normField}_${SCORE_VARIANT_SUFFIXES.fullSequence}`])
+            },
+            {
+                label: "Best Ref",
+                render: method => {
+                    const requiredId = result[`${method.referenceField}_${SCORE_VARIANT_SUFFIXES.requiredOnly}`];
+                    const fullId = result[`${method.referenceField}_${SCORE_VARIANT_SUFFIXES.fullSequence}`];
+                    return requiredId === fullId ? requiredId : `${requiredId} / ${fullId}`;
+                }
+            }
+        ]
+    }));
+    return section;
 }
 
 function createReportTable(options) {
@@ -1359,6 +1649,31 @@ function makeElement(tagName, className, text) {
 
 function formatPercent(value) {
     return Number.isFinite(value) ? `${SequencerCore.formatNumber(value)}%` : "N/A";
+}
+
+function formatUnitScore(value) {
+    return Number.isFinite(value) ? SequencerCore.formatNumber(value, 3) : "N/A";
+}
+
+function formatScoreRaw(result, method, suffix) {
+    const raw = result[`${method.rawField}_${suffix}`];
+
+    if (!Number.isFinite(raw)) {
+        return "N/A";
+    }
+
+    const formattedRaw = Number.isInteger(raw)
+        ? SequencerCore.formatNumber(raw, 0)
+        : SequencerCore.formatNumber(raw);
+
+    if (!method.totalField) {
+        return formattedRaw;
+    }
+
+    const total = result[`${method.totalField}_${suffix}`];
+    return Number.isFinite(total)
+        ? `${formattedRaw} / ${SequencerCore.formatNumber(total, 0)}`
+        : formattedRaw;
 }
 
 function formatCountRate(count, total, rate = total > 0 ? count / total * 100 : NaN) {
@@ -1509,8 +1824,12 @@ function formatItemFlags(itemComparison) {
 }
 
 function convertResultToRow(fileResult) {
+    const studentMetadata = parseStudentFilename(fileResult.filename);
+
     if (fileResult.error) {
         return {
+            studentName: studentMetadata.studentName,
+            canvasId: studentMetadata.canvasId,
             filename: fileResult.filename,
             status: "Error",
             error: fileResult.error,
@@ -1529,13 +1848,22 @@ function convertResultToRow(fileResult) {
             precedencePairsCorrect: "",
             precedencePairsTotal: "",
             precedenceScore: "",
-            weightedOrderScore: ""
+            weightedOrderScore: "",
+            required_present_count: "",
+            required_omitted_count: "",
+            distractor_included_count: "",
+            invalid_item_count: "",
+            best_reference_id: "",
+            best_reference_score_by_method: "",
+            ...createBlankAdditionalScoreExportFields()
         };
     }
 
     const result = fileResult.result;
     const itemComparison = result.itemComparison;
     return {
+        studentName: studentMetadata.studentName,
+        canvasId: studentMetadata.canvasId,
         filename: fileResult.filename,
         status: "OK",
         error: "",
@@ -1554,16 +1882,57 @@ function convertResultToRow(fileResult) {
         precedencePairsCorrect: result.precedencePairsCorrect,
         precedencePairsTotal: result.precedencePairsTotal,
         precedenceScore: SequencerCore.formatNumber(result.precedenceScore),
-        weightedOrderScore: SequencerCore.formatNumber(result.weightedOrderScore)
+        weightedOrderScore: SequencerCore.formatNumber(result.weightedOrderScore),
+        required_present_count: result.required_present_count,
+        required_omitted_count: result.required_omitted_count,
+        distractor_included_count: result.distractor_included_count,
+        invalid_item_count: result.invalid_item_count,
+        best_reference_id: result.best_reference_id,
+        best_reference_score_by_method: JSON.stringify(result.best_reference_score_by_method || {}),
+        ...createAdditionalScoreExportFields(result)
     };
+}
+
+function createBlankAdditionalScoreExportFields() {
+    return Object.fromEntries(ADDITIONAL_SCORE_EXPORT_FIELDS.map(field => [field, ""]));
+}
+
+function createAdditionalScoreExportFields(result) {
+    const fields = {};
+
+    ADDITIONAL_SCORE_EXPORT_FIELDS.forEach(field => {
+        const value = result[field];
+
+        if (typeof value === "number") {
+            if (!Number.isFinite(value)) {
+                fields[field] = "";
+            } else if (field.includes("_norm_")) {
+                fields[field] = SequencerCore.formatNumber(value, 3);
+            } else if (Number.isInteger(value)) {
+                fields[field] = SequencerCore.formatNumber(value, 0);
+            } else {
+                fields[field] = SequencerCore.formatNumber(value);
+            }
+            return;
+        }
+
+        fields[field] = value || "";
+    });
+
+    return fields;
 }
 
 function createOverviewExportRows() {
     const invalidCount = processedFileResults.filter(fileResult => fileResult.error).length;
     const summary = classReport.scoreSummary;
+    const referenceFiles = classReport.referenceFiles || [];
 
     return [
         { metric: "Report name", value: referenceFileNameRoot },
+        { metric: "Diagnostic reference file", value: classReport.diagnosticReferenceFileName || referenceFileNameRoot },
+        { metric: "Scoring reference files", value: referenceFiles.length || 1 },
+        { metric: "Scoring reference variants", value: classReport.scoringReferenceCount || 1 },
+        { metric: "Reference files used for scoring", value: referenceFiles.map(reference => reference.filename).join("; ") || referenceFileNameRoot },
         { metric: "Valid submissions", value: classReport.submissionCount },
         { metric: "Invalid files", value: invalidCount },
         { metric: "Sequence elements", value: classReport.elementCount },

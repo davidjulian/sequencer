@@ -20,13 +20,13 @@
     <section id="analysis-inputs" aria-labelledby="analysis-inputs-heading">
     <h2 id="analysis-inputs-heading">Analysis Files</h2>
     <div class="file-panel">
-        <h3 class="file-panel-title">Reference File</h3>
-        <input type="file" id="reference-file" class="visually-hidden" accept=".seq" tabindex="-1" aria-hidden="true">
-        <div id="referenceFileDropZone" class="drop-zone" role="button" tabindex="0" aria-controls="reference-file" aria-label="Choose instructor reference file" aria-describedby="referenceFileStatus">
-            <strong>Reference File</strong>
-            <span>Drop instructor reference.seq file here or click here to choose file</span>
+        <h3 class="file-panel-title">Reference Files</h3>
+        <input type="file" id="reference-file" class="visually-hidden" multiple accept=".seq" tabindex="-1" aria-hidden="true">
+        <div id="referenceFileDropZone" class="drop-zone" role="button" tabindex="0" aria-controls="reference-file" aria-label="Choose instructor reference files" aria-describedby="referenceFileStatus">
+            <strong>Reference Files</strong>
+            <span>Drop one or more instructor reference .seq files here or click here to choose files</span>
         </div>
-        <small id="referenceFileStatus" class="drop-status" data-drop-status role="status" aria-live="polite">No file selected</small>
+        <small id="referenceFileStatus" class="drop-status" data-drop-status role="status" aria-live="polite">No files selected</small>
     </div>
     <div class="file-panel">
         <h3 class="file-panel-title">Student Sequence Files</h3>

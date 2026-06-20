@@ -561,6 +561,14 @@ button:focus-visible,
     margin-bottom: 6px;
 }
 
+.student-detail-section {
+    margin-top: 14px;
+}
+
+.student-detail-section h4 {
+    margin: 0 0 8px;
+}
+
 .report-details ul {
     margin-top: 6px;
 }

@@ -1,6 +1,8 @@
 (function initializeSequencerUi(root) {
     "use strict";
 
+    const selectedFileStore = new WeakMap();
+
     function getScoringAboutText() {
         return [
             "Answers can receive partial credit. The scoring algorithm analyzes adjacent-pair accuracy and element order precedence to summarize overall order.",
@@ -190,27 +192,30 @@
         });
 
         dropZone.addEventListener("drop", event => {
-            const droppedFiles = Array.from(event.dataTransfer.files || [])
+            event.preventDefault();
+            const droppedFiles = Array.from(event.dataTransfer?.files || [])
                 .filter(file => file.name.toLowerCase().endsWith(".seq"));
             const files = multiple ? droppedFiles : droppedFiles.slice(0, 1);
 
             if (files.length === 0) {
-                input.value = "";
+                clearInputFiles(input);
                 setDropZoneStatus(dropZone, "No .seq file selected");
                 return;
             }
 
-            if (!setInputFiles(input, files)) {
-                setDropZoneStatus(dropZone, "Choose file instead");
-                return;
-            }
-
+            applySelectedFiles(input, files);
             setDropZoneStatus(dropZone, formatFileStatus(files));
             input.dispatchEvent(new Event("change", { bubbles: true }));
         });
 
-        input.addEventListener("change", () => {
-            const files = Array.from(input.files || []);
+        input.addEventListener("change", event => {
+            const inputFiles = Array.from(input.files || []);
+
+            if (event.isTrusted || inputFiles.length > 0 || !selectedFileStore.has(input)) {
+                storeSelectedFiles(input, inputFiles);
+            }
+
+            const files = getSelectedFiles(input);
             setDropZoneStatus(dropZone, files.length > 0 ? formatFileStatus(files) : "No file selected");
         });
     }
@@ -237,11 +242,7 @@
             });
             const files = await Promise.all(handles.map(handle => handle.getFile()));
 
-            if (!setInputFiles(input, files)) {
-                setDropZoneStatus(dropZone, "Choose file using drag and drop instead");
-                return;
-            }
-
+            applySelectedFiles(input, files);
             setDropZoneStatus(dropZone, formatFileStatus(files));
             input.dispatchEvent(new Event("change", { bubbles: true }));
         } catch (error) {
@@ -252,15 +253,61 @@
         }
     }
 
+    function applySelectedFiles(input, files) {
+        storeSelectedFiles(input, files);
+        setInputFiles(input, files);
+    }
+
+    function storeSelectedFiles(input, files) {
+        const fileArray = Array.from(files || []);
+
+        if (fileArray.length > 0) {
+            selectedFileStore.set(input, fileArray);
+            return;
+        }
+
+        selectedFileStore.delete(input);
+    }
+
     function setInputFiles(input, files) {
         if (typeof DataTransfer === "undefined") {
             return false;
         }
 
-        const dataTransfer = new DataTransfer();
-        files.forEach(file => dataTransfer.items.add(file));
-        input.files = dataTransfer.files;
-        return true;
+        try {
+            const dataTransfer = new DataTransfer();
+            files.forEach(file => dataTransfer.items.add(file));
+            input.files = dataTransfer.files;
+            return Array.from(input.files || []).length === files.length;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function clearInputFiles(input) {
+        selectedFileStore.delete(input);
+
+        try {
+            input.value = "";
+        } catch (error) {
+            // Some browsers restrict file input mutation. The fallback store is already clear.
+        }
+    }
+
+    function getSelectedFiles(inputOrId) {
+        const input = typeof inputOrId === "string"
+            ? document.getElementById(inputOrId)
+            : inputOrId;
+
+        if (!input) {
+            return [];
+        }
+
+        if (selectedFileStore.has(input)) {
+            return [...selectedFileStore.get(input)];
+        }
+
+        return Array.from(input.files || []);
     }
 
     function setDropZoneStatus(dropZone, status) {
@@ -298,7 +345,7 @@
         const dropZone = document.getElementById(dropZoneId);
 
         if (input) {
-            input.value = "";
+            clearInputFiles(input);
         }
 
         if (dropZone) {
@@ -311,6 +358,7 @@
         clearFileSelection,
         closeAboutDialog,
         closeTermsDialog,
+        getSelectedFiles,
         openAboutDialog,
         openTermsDialog,
         setupDropZone
