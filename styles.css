@@ -459,6 +459,181 @@ button:focus-visible,
     background: #f7f9fb;
 }
 
+.visual-pattern-section {
+    margin: 24px 0 34px;
+}
+
+.visual-pattern-section > h4 {
+    margin-bottom: 6px;
+}
+
+.heat-map-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 360px;
+    margin: 10px 0;
+    color: #4f5f6f;
+    font-size: 0.9rem;
+}
+
+.heat-map-gradient {
+    display: inline-block;
+    flex: 1;
+    min-width: 120px;
+    height: 14px;
+    border: 1px solid #8b9aab;
+    border-radius: 4px;
+    background: linear-gradient(to right, #eff6fc, #075184);
+}
+
+.heat-map-scroll {
+    max-width: 100%;
+    margin: 12px 0 28px;
+    overflow: auto;
+}
+
+.heat-map-table {
+    border-collapse: collapse;
+    border: 1px solid #c7d0d9;
+    background: #ffffff;
+}
+
+.heat-map-table th,
+.heat-map-table td {
+    border: 1px solid #d7e0e8;
+}
+
+.heat-map-axis-label,
+.heat-map-corner {
+    min-width: 54px;
+    padding: 7px 8px;
+    background: #e8eef5;
+    color: #1f2933;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.heat-map-corner {
+    min-width: 44px;
+}
+
+.heat-map-cell {
+    min-width: 58px;
+    height: 42px;
+    padding: 0 6px;
+    text-align: center;
+    font-weight: 700;
+    vertical-align: middle;
+}
+
+.heat-map-empty-cell {
+    background: #f5f7f9;
+}
+
+.expected-transition-cell {
+    outline: 3px solid #1f2933;
+    outline-offset: -4px;
+}
+
+.dense-heat-map .heat-map-axis-label,
+.dense-heat-map .heat-map-corner {
+    min-width: 34px;
+    padding: 5px;
+    font-size: 0.78rem;
+}
+
+.dense-heat-map .heat-map-cell {
+    min-width: 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font-size: 0;
+}
+
+.dominant-pattern-grid {
+    display: grid;
+    gap: 18px;
+    max-width: 1120px;
+}
+
+.dominant-pattern-card {
+    padding: 16px;
+    border: 1px solid #c7d0d9;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.dominant-pattern-card h5 {
+    margin: 0 0 8px;
+}
+
+.reorder-plot-wrapper {
+    max-width: 100%;
+    margin: 14px 0;
+    overflow-x: auto;
+    border: 1px solid #d7e0e8;
+    border-radius: 6px;
+    background: #fbfcfd;
+}
+
+.reorder-plot {
+    display: block;
+    min-width: 640px;
+    width: 100%;
+    height: auto;
+}
+
+.reorder-flow {
+    fill: none;
+    opacity: 0.58;
+    stroke-linecap: round;
+    stroke-width: 3.5;
+}
+
+.reorder-flow-stable {
+    stroke: #6b879c;
+}
+
+.reorder-flow-moved {
+    stroke: #6a51a3;
+}
+
+.reorder-node {
+    fill: #ffffff;
+    stroke: #1f2933;
+    stroke-width: 1.2;
+}
+
+.reorder-node-moved {
+    fill: #f5f0ff;
+    stroke: #6a51a3;
+    stroke-width: 2;
+}
+
+.reorder-column-heading,
+.reorder-node-label {
+    fill: #1f2933;
+    font-weight: 700;
+    text-anchor: middle;
+    pointer-events: none;
+}
+
+.reorder-column-heading {
+    font-size: 14px;
+}
+
+.reorder-node-label {
+    font-size: 13px;
+}
+
+.reorder-pattern-label {
+    margin: 0;
+    padding: 0 12px 12px;
+    color: #4f5f6f;
+    font-weight: 700;
+}
+
 .sort-button {
     display: inline;
     min-height: 0;

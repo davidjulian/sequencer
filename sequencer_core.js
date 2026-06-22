@@ -1261,6 +1261,70 @@
         };
     }
 
+    function analyzeAdjacencyTransitions(elements, sequences, reference) {
+        const transitionByPair = new Map();
+        const transitionsByFirstText = new Map();
+        const transitions = [];
+
+        elements.forEach(first => {
+            const rowTransitions = [];
+
+            elements.forEach(second => {
+                if (first.index === second.index) {
+                    return;
+                }
+
+                const transition = {
+                    firstIndex: first.index,
+                    secondIndex: second.index,
+                    firstLabel: first.label,
+                    firstText: first.text,
+                    secondLabel: second.label,
+                    secondText: second.text,
+                    isReferenceNext: second.index === first.index + 1,
+                    eligibleStudents: 0,
+                    adjacentStudents: 0,
+                    adjacencyRate: NaN
+                };
+
+                transitions.push(transition);
+                rowTransitions.push(transition);
+                transitionByPair.set(pairKey(first.text, second.text), transition);
+            });
+
+            transitionsByFirstText.set(first.text, rowTransitions);
+        });
+
+        sequences.forEach(sequence => {
+            const sequenceMiddle = stripFixedElements(sequence, reference.startingElements, reference.endingElements);
+            const counts = countValues(sequenceMiddle);
+
+            elements.forEach(first => {
+                if (counts.get(first.text) !== 1) {
+                    return;
+                }
+
+                transitionsByFirstText.get(first.text).forEach(transition => {
+                    transition.eligibleStudents++;
+                });
+
+                const firstPosition = sequenceMiddle.indexOf(first.text);
+                const nextItem = sequenceMiddle[firstPosition + 1];
+                const transition = transitionByPair.get(pairKey(first.text, nextItem));
+
+                if (transition && counts.get(nextItem) === 1) {
+                    transition.adjacentStudents++;
+                }
+            });
+        });
+
+        transitions.forEach(transition => {
+            transition.adjacencyRate = calculateRate(transition.adjacentStudents, transition.eligibleStudents);
+        });
+
+        return transitions;
+    }
+
     function analyzeClass(referenceData, studentSequences) {
         const reference = normalizeReferenceData(referenceData);
 
@@ -1622,6 +1686,7 @@
             }))
             .sort((first, second) => second.count - first.count);
         const segmentAnalysis = analyzeSequenceSegments(elements, relationships, sequences, reference);
+        const adjacencyTransitions = analyzeAdjacencyTransitions(elements, sequences, reference);
 
         return {
             submissionCount,
@@ -1635,6 +1700,7 @@
             omittedElements,
             unknownExtras,
             duplicates,
+            adjacencyTransitions,
             ...segmentAnalysis,
             scoreSummary: {
                 adjacentMean: calculateMean(scores.map(score => score.adjacentPairScore)),

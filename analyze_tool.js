@@ -8,6 +8,9 @@ let isProcessing = false;
 let renderedReportPanels = new Set();
 
 const REPORT_PAGE_SIZE = 100;
+const DOMINANT_PATTERN_MIN_COUNT = 2;
+const DOMINANT_REORDER_MIN_RATE = 30;
+
 const reportPageState = {
     elements: 1,
     relationships: 1,
@@ -401,6 +404,7 @@ function resetReportData() {
     document.getElementById("overview-panel").replaceChildren();
     document.getElementById("elements-panel").replaceChildren();
     document.getElementById("relationships-table-container").replaceChildren();
+    document.getElementById("visual-patterns-panel").replaceChildren();
     document.getElementById("exclusions-panel").replaceChildren();
     document.getElementById("student-results-panel").replaceChildren();
     updateAnalyzeButtons();
@@ -540,6 +544,8 @@ function ensureReportPanelRendered(panelId) {
         renderElements();
     } else if (panelId === "relationships-panel") {
         renderRelationships();
+    } else if (panelId === "visual-patterns-panel") {
+        renderVisualPatterns();
     } else if (panelId === "exclusions-panel") {
         renderExclusions();
     } else if (panelId === "student-results-panel") {
@@ -1197,6 +1203,419 @@ function createRelationshipCell(relationship) {
     inlineText.appendChild(makeElement("span", "relationship-text-part", relationship.secondText));
     container.appendChild(inlineText);
     return container;
+}
+
+function renderVisualPatterns() {
+    if (!classReport) {
+        return;
+    }
+
+    const panel = document.getElementById("visual-patterns-panel");
+    panel.replaceChildren();
+    panel.appendChild(makeElement("h3", "", "Visual Patterns"));
+    panel.appendChild(createAdjacencyHeatMap());
+    panel.appendChild(createPrecedenceHeatMap());
+    panel.appendChild(createDominantPatternSection());
+}
+
+function createAdjacencyHeatMap() {
+    const transitions = classReport.adjacencyTransitions || [];
+    const transitionByIndexes = new Map(transitions.map(transition => [
+        heatMapPairKey(transition.firstIndex, transition.secondIndex),
+        transition
+    ]));
+
+    return createHeatMapSection({
+        title: "Immediate Next Event",
+        description: "Cell values show how often the column event immediately followed the row event.",
+        elements: classReport.elements,
+        className: "adjacency-heat-map",
+        emptyMessage: "At least two sequence elements are needed for an adjacency map.",
+        getCell: (first, second) => {
+            if (first.index === second.index) {
+                return null;
+            }
+
+            const transition = transitionByIndexes.get(heatMapPairKey(first.index, second.index));
+
+            if (!transition) {
+                return null;
+            }
+
+            return {
+                rate: transition.adjacencyRate,
+                count: transition.adjacentStudents,
+                total: transition.eligibleStudents,
+                emphasized: transition.isReferenceNext,
+                label: `${first.label} immediately before ${second.label}`
+            };
+        }
+    });
+}
+
+function createPrecedenceHeatMap() {
+    const relationshipByIndexes = new Map(classReport.relationships.map(relationship => [
+        heatMapPairKey(relationship.firstIndex, relationship.secondIndex),
+        relationship
+    ]));
+
+    return createHeatMapSection({
+        title: "Correct Before/After Relationships",
+        description: "Cell values show how often students preserved the expected before/after relationship.",
+        elements: classReport.elements,
+        className: "precedence-heat-map",
+        emptyMessage: "At least two sequence elements are needed for a precedence map.",
+        getCell: (first, second) => {
+            if (first.index >= second.index) {
+                return null;
+            }
+
+            const relationship = relationshipByIndexes.get(heatMapPairKey(first.index, second.index));
+
+            if (!relationship) {
+                return null;
+            }
+
+            const correctStudents = relationship.eligibleStudents - relationship.reversedStudents;
+            const correctRate = relationship.eligibleStudents > 0
+                ? correctStudents / relationship.eligibleStudents * 100
+                : NaN;
+
+            return {
+                rate: correctRate,
+                count: correctStudents,
+                total: relationship.eligibleStudents,
+                emphasized: false,
+                label: `${first.label} before ${second.label}`
+            };
+        }
+    });
+}
+
+function createHeatMapSection(options) {
+    const section = makeElement("section", `visual-pattern-section ${options.className || ""}`.trim());
+    section.appendChild(makeElement("h4", "", options.title));
+    section.appendChild(makeElement("p", "report-description", options.description));
+
+    if (options.elements.length < 2) {
+        section.appendChild(makeElement("p", "empty-message", options.emptyMessage));
+        return section;
+    }
+
+    section.appendChild(createHeatMapLegend());
+
+    const scroll = makeElement("div", "heat-map-scroll");
+    const table = makeElement("table", `heat-map-table${options.elements.length > 24 ? " dense-heat-map" : ""}`);
+    const head = document.createElement("thead");
+    const headingRow = document.createElement("tr");
+    headingRow.appendChild(makeElement("th", "heat-map-corner", ""));
+    options.elements.forEach(element => {
+        const heading = makeElement("th", "heat-map-axis-label", element.label);
+        heading.scope = "col";
+        heading.title = element.text;
+        headingRow.appendChild(heading);
+    });
+    head.appendChild(headingRow);
+    table.appendChild(head);
+
+    const body = document.createElement("tbody");
+    options.elements.forEach(first => {
+        const row = document.createElement("tr");
+        const rowHeading = makeElement("th", "heat-map-axis-label", first.label);
+        rowHeading.scope = "row";
+        rowHeading.title = first.text;
+        row.appendChild(rowHeading);
+
+        options.elements.forEach(second => {
+            const cellData = options.getCell(first, second);
+            const cell = makeElement("td", "heat-map-cell");
+
+            if (!cellData) {
+                cell.classList.add("heat-map-empty-cell");
+                cell.setAttribute("aria-label", `${first.label} to ${second.label} not shown`);
+                row.appendChild(cell);
+                return;
+            }
+
+            const rate = Number.isFinite(cellData.rate) ? cellData.rate : NaN;
+            cell.style.backgroundColor = getHeatMapColor(rate);
+            cell.style.color = getHeatMapTextColor(rate);
+            cell.dataset.rate = Number.isFinite(rate) ? SequencerCore.formatNumber(rate, 2) : "";
+            cell.textContent = formatHeatMapValue(rate);
+            cell.title = `${cellData.label}: ${formatCountRate(cellData.count, cellData.total, rate)}`;
+            cell.setAttribute("aria-label", cell.title);
+
+            if (cellData.emphasized) {
+                cell.classList.add("expected-transition-cell");
+            }
+
+            row.appendChild(cell);
+        });
+
+        body.appendChild(row);
+    });
+    table.appendChild(body);
+    scroll.appendChild(table);
+    section.appendChild(scroll);
+    return section;
+}
+
+function heatMapPairKey(firstIndex, secondIndex) {
+    return `${firstIndex}:${secondIndex}`;
+}
+
+function createHeatMapLegend() {
+    const legend = makeElement("div", "heat-map-legend");
+    legend.appendChild(makeElement("span", "", "0%"));
+    legend.appendChild(makeElement("span", "heat-map-gradient"));
+    legend.appendChild(makeElement("span", "", "100%"));
+    return legend;
+}
+
+function getHeatMapColor(rate) {
+    if (!Number.isFinite(rate)) {
+        return "#eef1f4";
+    }
+
+    const t = Math.max(0, Math.min(1, rate / 100));
+    return interpolateRgb([239, 246, 252], [7, 81, 132], t);
+}
+
+function getHeatMapTextColor(rate) {
+    return Number.isFinite(rate) && rate >= 62 ? "#ffffff" : "#1f2933";
+}
+
+function interpolateRgb(start, end, t) {
+    const values = start.map((value, index) => Math.round(value + (end[index] - value) * t));
+    return `rgb(${values.join(", ")})`;
+}
+
+function formatHeatMapValue(rate) {
+    return Number.isFinite(rate) ? `${SequencerCore.formatNumber(rate, 0)}%` : "";
+}
+
+function createDominantPatternSection() {
+    const section = makeElement("section", "visual-pattern-section dominant-pattern-section");
+    section.appendChild(makeElement("h4", "", "Most Common Reordered Sequence"));
+
+    const candidates = getDominantPatternCandidates();
+
+    if (candidates.length === 0) {
+        section.appendChild(makeElement(
+            "p",
+            "empty-message",
+            "No hotspot or segment had one repeated reordered sequence that met the display threshold."
+        ));
+        return section;
+    }
+
+    const cards = makeElement("div", "dominant-pattern-grid");
+    candidates.forEach(candidate => {
+        cards.appendChild(createDominantPatternCard(candidate));
+    });
+    section.appendChild(cards);
+    return section;
+}
+
+function getDominantPatternCandidates() {
+    const candidates = [];
+    const usedRangeKeys = new Set();
+    const segmentNumberByStartIndex = getSequenceSegmentNumberByStartIndex();
+
+    classReport.confusionHotspots.forEach(hotspot => {
+        addDominantPatternCandidate(candidates, usedRangeKeys, {
+            label: `Hotspot ${hotspot.hotspotRank}: ${hotspot.startLabel}-${hotspot.endLabel}`,
+            finding: hotspot,
+            priority: hotspot.priorityScore || 0
+        });
+    });
+
+    classReport.sequenceSegments.forEach(segment => {
+        addDominantPatternCandidate(candidates, usedRangeKeys, {
+            label: `Segment ${segmentNumberByStartIndex.get(segment.startIndex)}: ${segment.startLabel}-${segment.endLabel}`,
+            finding: segment,
+            priority: segment.affectedRate || 0
+        });
+    });
+
+    return candidates
+        .sort((first, second) => second.coverageRate - first.coverageRate || second.priority - first.priority)
+        .slice(0, 3);
+}
+
+function addDominantPatternCandidate(candidates, usedRangeKeys, candidate) {
+    const finding = candidate.finding;
+    const rangeKey = `${finding.startIndex}:${finding.endIndex}`;
+    const topPattern = (finding.commonIncorrectOrders || [])
+        .find(pattern => pattern.count >= DOMINANT_PATTERN_MIN_COUNT);
+    const affectedStudents = finding.affectedStudents || 0;
+    const patternRate = topPattern && affectedStudents > 0 ? topPattern.count / affectedStudents * 100 : NaN;
+
+    if (
+        usedRangeKeys.has(rangeKey)
+        || !topPattern
+        || !Number.isFinite(patternRate)
+        || patternRate < DOMINANT_REORDER_MIN_RATE
+    ) {
+        return;
+    }
+
+    usedRangeKeys.add(rangeKey);
+    candidates.push({
+        ...candidate,
+        pattern: topPattern,
+        patterns: [topPattern],
+        shownCount: topPattern.count,
+        affectedStudents,
+        coverageRate: patternRate,
+        otherCount: Math.max(0, affectedStudents - topPattern.count)
+    });
+}
+
+function createDominantPatternCard(candidate) {
+    const card = makeElement("article", "dominant-pattern-card");
+    card.appendChild(makeElement("h5", "", candidate.label));
+    card.appendChild(makeElement(
+        "p",
+        "segment-finding-summary",
+        `The most common reordered sequence was used by `
+        + `${formatCountRate(candidate.pattern.count, candidate.affectedStudents, candidate.coverageRate)} of affected submissions.`
+    ));
+    card.appendChild(createReorderComparisonPlot(candidate));
+    return card;
+}
+
+function createDominantPatternRows(candidate) {
+    const rows = candidate.patterns.map(pattern => ({
+        order: pattern.labels.join(" -> "),
+        description: pattern.description,
+        count: pattern.count,
+        rate: candidate.affectedStudents > 0 ? pattern.count / candidate.affectedStudents * 100 : NaN
+    }));
+
+    if (candidate.otherCount > 0) {
+        rows.push({
+            order: "Other",
+            description: "Other lower-frequency orders",
+            count: candidate.otherCount,
+            rate: candidate.affectedStudents > 0 ? candidate.otherCount / candidate.affectedStudents * 100 : NaN
+        });
+    }
+
+    return rows;
+}
+
+function createReorderComparisonPlot(candidate) {
+    const namespace = "http://www.w3.org/2000/svg";
+    const expectedLabels = candidate.finding.expectedLabels || [];
+    const observedLabels = candidate.pattern.labels || [];
+    const rowCount = Math.max(expectedLabels.length, observedLabels.length);
+    const width = 680;
+    const top = 62;
+    const rowGap = 44;
+    const bottom = 30;
+    const height = top + Math.max(rowCount - 1, 0) * rowGap + bottom;
+    const leftX = 130;
+    const rightX = width - 130;
+    const nodeWidth = 68;
+    const nodeHeight = 28;
+    const expectedPositionByLabel = new Map(expectedLabels.map((label, index) => [label, index]));
+    const observedPositionByLabel = new Map(observedLabels.map((label, index) => [label, index]));
+    const getY = index => top + index * rowGap;
+
+    const svg = document.createElementNS(namespace, "svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `${candidate.label} reference order compared with most common reordered sequence`);
+    svg.classList.add("reorder-plot");
+
+    const title = document.createElementNS(namespace, "title");
+    title.textContent = `${candidate.label}: reference order compared with most common reordered sequence`;
+    svg.appendChild(title);
+
+    appendSvgText(svg, namespace, leftX, 24, "Reference order", "reorder-column-heading");
+    appendSvgText(svg, namespace, rightX, 24, "Most common submitted order", "reorder-column-heading");
+
+    expectedLabels.forEach(label => {
+        if (!observedPositionByLabel.has(label)) {
+            return;
+        }
+
+        const expectedIndex = expectedPositionByLabel.get(label);
+        const observedIndex = observedPositionByLabel.get(label);
+        const sourceY = getY(expectedIndex);
+        const targetY = getY(observedIndex);
+        const path = document.createElementNS(namespace, "path");
+        const sourceX = leftX + nodeWidth / 2;
+        const targetX = rightX - nodeWidth / 2;
+        const curve = (targetX - sourceX) * 0.45;
+
+        path.setAttribute(
+            "d",
+            `M ${sourceX} ${sourceY} C ${sourceX + curve} ${sourceY}, ${targetX - curve} ${targetY}, ${targetX} ${targetY}`
+        );
+        path.setAttribute("class", expectedIndex === observedIndex ? "reorder-flow reorder-flow-stable" : "reorder-flow reorder-flow-moved");
+
+        const pathTitle = document.createElementNS(namespace, "title");
+        pathTitle.textContent = `${label}: reference position ${expectedIndex + 1}, submitted position ${observedIndex + 1}`;
+        path.appendChild(pathTitle);
+        svg.appendChild(path);
+    });
+
+    expectedLabels.forEach((label, index) => {
+        appendReorderNode(svg, namespace, {
+            label,
+            x: leftX,
+            y: getY(index),
+            width: nodeWidth,
+            height: nodeHeight,
+            moved: observedPositionByLabel.get(label) !== index,
+            title: `${label}: reference position ${index + 1}`
+        });
+    });
+
+    observedLabels.forEach((label, index) => {
+        appendReorderNode(svg, namespace, {
+            label,
+            x: rightX,
+            y: getY(index),
+            width: nodeWidth,
+            height: nodeHeight,
+            moved: expectedPositionByLabel.get(label) !== index,
+            title: `${label}: submitted position ${index + 1}`
+        });
+    });
+
+    const wrapper = makeElement("div", "reorder-plot-wrapper");
+    wrapper.appendChild(svg);
+    wrapper.appendChild(makeElement("p", "reorder-pattern-label", candidate.pattern.labels.join(" -> ")));
+    return wrapper;
+}
+
+function appendReorderNode(svg, namespace, options) {
+    const rect = document.createElementNS(namespace, "rect");
+    rect.setAttribute("x", String(options.x - options.width / 2));
+    rect.setAttribute("y", String(options.y - options.height / 2));
+    rect.setAttribute("width", String(options.width));
+    rect.setAttribute("height", String(options.height));
+    rect.setAttribute("rx", "4");
+    rect.setAttribute("class", options.moved ? "reorder-node reorder-node-moved" : "reorder-node");
+
+    const title = document.createElementNS(namespace, "title");
+    title.textContent = options.title;
+    rect.appendChild(title);
+    svg.appendChild(rect);
+
+    appendSvgText(svg, namespace, options.x, options.y + 4, options.label, "reorder-node-label");
+}
+
+function appendSvgText(svg, namespace, x, y, textContent, className) {
+    const text = document.createElementNS(namespace, "text");
+    text.setAttribute("x", String(x));
+    text.setAttribute("y", String(y));
+    text.setAttribute("class", className);
+    text.textContent = textContent;
+    svg.appendChild(text);
 }
 
 function renderExclusions() {
@@ -2268,6 +2687,141 @@ function createExclusionExportRows() {
     return rows;
 }
 
+function createAdjacencyTransitionExportRows() {
+    return (classReport.adjacencyTransitions || []).map(transition => ({
+        firstElementLabel: transition.firstLabel,
+        firstElementText: transition.firstText,
+        secondElementLabel: transition.secondLabel,
+        secondElementText: transition.secondText,
+        isReferenceNext: transition.isReferenceNext,
+        adjacentStudents: transition.adjacentStudents,
+        eligibleStudents: transition.eligibleStudents,
+        adjacencyRate: SequencerCore.formatNumber(transition.adjacencyRate)
+    }));
+}
+
+function createPrecedenceCorrectnessExportRows() {
+    return classReport.relationships.map(relationship => {
+        const correctStudents = relationship.eligibleStudents - relationship.reversedStudents;
+        const correctRate = relationship.eligibleStudents > 0
+            ? correctStudents / relationship.eligibleStudents * 100
+            : NaN;
+
+        return {
+            firstElementLabel: relationship.firstLabel,
+            firstElementText: relationship.firstText,
+            secondElementLabel: relationship.secondLabel,
+            secondElementText: relationship.secondText,
+            correctStudents,
+            eligibleStudents: relationship.eligibleStudents,
+            correctRate: SequencerCore.formatNumber(correctRate),
+            reversedStudents: relationship.reversedStudents,
+            reversalRate: SequencerCore.formatNumber(relationship.reversalRate)
+        };
+    });
+}
+
+function createAdjacencyHeatMapMatrixRows() {
+    const transitionByIndexes = new Map((classReport.adjacencyTransitions || []).map(transition => [
+        heatMapPairKey(transition.firstIndex, transition.secondIndex),
+        transition
+    ]));
+
+    return classReport.elements.map(first => {
+        const row = {
+            rowElementLabel: first.label,
+            rowElementText: first.text
+        };
+
+        classReport.elements.forEach(second => {
+            if (first.index === second.index) {
+                row[second.label] = "";
+                return;
+            }
+
+            const transition = transitionByIndexes.get(heatMapPairKey(first.index, second.index));
+            row[second.label] = formatMatrixRate(transition?.adjacencyRate);
+        });
+
+        return row;
+    });
+}
+
+function createPrecedenceHeatMapMatrixRows() {
+    const relationshipByIndexes = new Map(classReport.relationships.map(relationship => [
+        heatMapPairKey(relationship.firstIndex, relationship.secondIndex),
+        relationship
+    ]));
+
+    return classReport.elements.map(first => {
+        const row = {
+            rowElementLabel: first.label,
+            rowElementText: first.text
+        };
+
+        classReport.elements.forEach(second => {
+            if (first.index >= second.index) {
+                row[second.label] = "";
+                return;
+            }
+
+            const relationship = relationshipByIndexes.get(heatMapPairKey(first.index, second.index));
+            const correctStudents = relationship
+                ? relationship.eligibleStudents - relationship.reversedStudents
+                : NaN;
+            const correctRate = relationship?.eligibleStudents > 0
+                ? correctStudents / relationship.eligibleStudents * 100
+                : NaN;
+
+            row[second.label] = formatMatrixRate(correctRate);
+        });
+
+        return row;
+    });
+}
+
+function formatMatrixRate(rate) {
+    return Number.isFinite(rate) ? SequencerCore.formatNumber(rate) : "";
+}
+
+function createDominantPatternExportRows() {
+    const rows = [];
+
+    getDominantPatternCandidates().forEach(candidate => {
+        candidate.patterns.forEach(pattern => {
+            rows.push({
+                findingLabel: candidate.label,
+                expectedOrder: candidate.finding.expectedLabels.join("; "),
+                observedOrder: pattern.labels.join("; "),
+                patternDescription: pattern.description,
+                count: pattern.count,
+                affectedStudents: candidate.affectedStudents,
+                rateAmongAffected: SequencerCore.formatNumber(
+                    candidate.affectedStudents > 0 ? pattern.count / candidate.affectedStudents * 100 : NaN
+                ),
+                plottedPatternCoverage: SequencerCore.formatNumber(candidate.coverageRate)
+            });
+        });
+
+        if (candidate.otherCount > 0) {
+            rows.push({
+                findingLabel: candidate.label,
+                expectedOrder: candidate.finding.expectedLabels.join("; "),
+                observedOrder: "Other",
+                patternDescription: "Other lower-frequency orders",
+                count: candidate.otherCount,
+                affectedStudents: candidate.affectedStudents,
+                rateAmongAffected: SequencerCore.formatNumber(
+                    candidate.affectedStudents > 0 ? candidate.otherCount / candidate.affectedStudents * 100 : NaN
+                ),
+                plottedPatternCoverage: SequencerCore.formatNumber(candidate.coverageRate)
+            });
+        }
+    });
+
+    return rows;
+}
+
 function convertToCSV(objArray) {
     const array = typeof objArray !== "object" ? JSON.parse(objArray) : objArray;
 
@@ -2336,6 +2890,11 @@ async function exportClassReport() {
         zip.file("sequence_segments.csv", convertToCSV(createSequenceSegmentExportRows()));
         zip.file("element_confusion.csv", convertToCSV(createElementExportRows()));
         zip.file("relationship_errors.csv", convertToCSV(createRelationshipExportRows()));
+        zip.file("adjacency_transitions.csv", convertToCSV(createAdjacencyTransitionExportRows()));
+        zip.file("adjacency_heatmap_matrix.csv", convertToCSV(createAdjacencyHeatMapMatrixRows()));
+        zip.file("precedence_correctness.csv", convertToCSV(createPrecedenceCorrectnessExportRows()));
+        zip.file("precedence_heatmap_matrix.csv", convertToCSV(createPrecedenceHeatMapMatrixRows()));
+        zip.file("most_common_reordered_sequences.csv", convertToCSV(createDominantPatternExportRows()));
         zip.file("exclusion_errors.csv", convertToCSV(createExclusionExportRows()));
         zip.file("student_results.csv", convertToCSV(studentRows));
 
@@ -2359,6 +2918,7 @@ function printClassReport() {
     [
         "elements-panel",
         "relationships-panel",
+        "visual-patterns-panel",
         "exclusions-panel",
         "student-results-panel"
     ].forEach(ensureReportPanelRendered);
