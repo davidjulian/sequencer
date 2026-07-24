@@ -5,6 +5,8 @@ let processedFileResults = [];
 let classReport = null;
 let referenceFileNameRoot = "";
 let isProcessing = false;
+let isExampleAnalysis = false;
+let isLoadingExample = false;
 let renderedReportPanels = new Set();
 
 const REPORT_PAGE_SIZE = 100;
@@ -63,9 +65,11 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.getElementById("reference-file").addEventListener("change", function() {
+        if (!isLoadingExample) setExampleMode(false);
         clearAnalysisResults("Reference file selection changed. Previous report cleared.");
     });
     document.getElementById("sequence-files").addEventListener("change", function() {
+        if (!isLoadingExample) setExampleMode(false);
         clearAnalysisResults("Student file selection changed. Previous report cleared.");
     });
     document.getElementById("show-full-text").addEventListener("change", event => {
@@ -121,7 +125,84 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     updateAnalyzeButtons();
+
+    if (new URLSearchParams(window.location.search).get("example") === "1") {
+        window.setTimeout(loadExampleDataset, 0);
+    }
 });
+
+function setExampleMode(enabled) {
+    isExampleAnalysis = Boolean(enabled);
+    const notice = document.getElementById("example-analysis-notice");
+
+    if (notice) {
+        notice.hidden = !isExampleAnalysis;
+    }
+}
+
+function createExampleFile(content, filename) {
+    return new File([JSON.stringify(content)], filename, { type: "application/json" });
+}
+
+async function loadExampleDataset() {
+    if (isProcessing || !globalThis.SequencerExample) {
+        return;
+    }
+
+    isLoadingExample = true;
+
+    try {
+        const referenceFile = createExampleFile(SequencerExample.reference, SequencerExample.referenceFilename);
+        const studentFiles = SequencerExample.responses.map((response, index) => (
+            createExampleFile(response, `synthetic_student_${String(index + 1).padStart(2, "0")}.seq`)
+        ));
+
+        SequencerUI.selectFiles("reference-file", "referenceFileDropZone", [referenceFile]);
+        SequencerUI.selectFiles("sequence-files", "studentFilesDropZone", studentFiles);
+        setExampleMode(true);
+        await processFiles();
+    } finally {
+        isLoadingExample = false;
+    }
+}
+
+async function downloadExampleFiles() {
+    if (!globalThis.SequencerExample) {
+        alert("The example data could not be loaded.");
+        return;
+    }
+
+    if (typeof JSZip === "undefined") {
+        alert("The download library did not load. Check your internet connection and reload this page.");
+        return;
+    }
+
+    const zip = new JSZip();
+    zip.file(SequencerExample.referenceFilename, JSON.stringify(SequencerExample.reference, null, 2));
+    zip.file(SequencerExample.assessmentFilename, JSON.stringify(SequencerExample.assessment, null, 2));
+
+    const responseFolder = zip.folder("synthetic_student_responses");
+    SequencerExample.responses.forEach((response, index) => {
+        responseFolder.file(
+            `synthetic_student_${String(index + 1).padStart(2, "0")}.seq`,
+            JSON.stringify(response, null, 2)
+        );
+    });
+
+    zip.file("README.txt", [
+        "Sequencer insulin-response demonstration",
+        "",
+        SequencerExample.prompt,
+        "",
+        "This archive contains one instructor reference file, one student assessment file, and 20 synthetic student responses.",
+        "The responses were created solely to demonstrate scoring and class-analysis features; they do not represent actual students.",
+        "",
+        "To reproduce the example report, open Sequencer - Analyze, choose the reference file, choose all files in synthetic_student_responses, and generate the class report."
+    ].join("\n"));
+
+    const blob = await zip.generateAsync({ type: "blob" });
+    downloadBlob(blob, "sequencer_insulin_response_example.zip");
+}
 
 async function processFiles() {
     if (isProcessing) {
@@ -325,6 +406,8 @@ function setProcessingState(processing) {
     const printButton = document.getElementById("print-report-button");
     const clearStudentFilesButton = document.getElementById("clear-student-files-button");
     const clearAllButton = document.getElementById("clear-all-button");
+    const loadExampleButton = document.getElementById("load-example-button");
+    const downloadExampleButton = document.getElementById("download-example-button");
 
     processButton.disabled = processing;
     processButton.textContent = processing ? "Generating Report..." : "Generate Class Report";
@@ -332,6 +415,8 @@ function setProcessingState(processing) {
     printButton.disabled = processing || !classReport;
     clearStudentFilesButton.disabled = processing;
     clearAllButton.disabled = processing;
+    loadExampleButton.disabled = processing;
+    downloadExampleButton.disabled = processing;
 }
 
 function updateAnalyzeButtons() {
@@ -373,6 +458,7 @@ function clearStudentFiles() {
         return;
     }
 
+    setExampleMode(false);
     SequencerUI.clearFileSelection("sequence-files", "studentFilesDropZone", "No files selected");
     clearAnalysisResults("Student files and report cleared. Reference file retained.");
 }
@@ -382,6 +468,7 @@ function clearAllAnalysis() {
         return;
     }
 
+    setExampleMode(false);
     SequencerUI.clearFileSelection("reference-file", "referenceFileDropZone", "No files selected");
     SequencerUI.clearFileSelection("sequence-files", "studentFilesDropZone", "No files selected");
     referenceFileNameRoot = "";

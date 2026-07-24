@@ -17,6 +17,19 @@
     <h1>Sequencer - Analyze</h1>
     <p id="analysisStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
 
+    <section id="example-actions" class="example-panel" aria-labelledby="example-actions-heading">
+        <div>
+            <p class="eyebrow">Demonstration</p>
+            <h2 id="example-actions-heading">Explore an Example</h2>
+            <p>Load a short insulin-response problem and a class of 20 synthetic responses, or download the files to reproduce the workflow manually.</p>
+        </div>
+        <div class="tool-actions">
+            <button id="load-example-button" type="button" onclick="loadExampleDataset()">Load Example Dataset</button>
+            <button id="download-example-button" type="button" onclick="downloadExampleFiles()">Download Example Files</button>
+            <a class="button" href="student_tool.html?example=1">Try the Example Question</a>
+        </div>
+    </section>
+
     <section id="analysis-inputs" aria-labelledby="analysis-inputs-heading">
     <h2 id="analysis-inputs-heading">Analysis Files</h2>
     <div class="file-panel">
@@ -48,6 +61,11 @@
         <button id="clear-all-button" type="button" onclick="clearAllAnalysis()">Clear All</button>
     </div>
     </section>
+
+    <aside id="example-analysis-notice" class="example-notice" aria-label="Demonstration data notice" hidden>
+        <strong>Synthetic demonstration data</strong>
+        <span>This report illustrates Sequencer’s scoring and response-level analyses. These responses were created for demonstration and do not represent actual students.</span>
+    </aside>
 
     <section id="class-report" class="class-report" aria-labelledby="class-report-heading" hidden>
         <div class="report-heading-row">
@@ -97,6 +115,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.6.0/jszip.min.js"></script>
     <script src="sequencer_ui.js"></script>
     <script src="sequencer_core.js"></script>
+    <script src="example_data.js"></script>
     <script src="analyze_tool.js"></script>
     
     <footer>

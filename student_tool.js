@@ -7,7 +7,23 @@ document.addEventListener("DOMContentLoaded", function() {
         dropZoneId: "studentFileDropZone",
         inputId: "fileInput"
     });
+
+    if (new URLSearchParams(window.location.search).get("example") === "1") {
+        loadExampleAssessment();
+    }
 });
+
+function loadExampleAssessment() {
+    if (!globalThis.SequencerExample) {
+        return;
+    }
+
+    globalFileName = SequencerExample.assessmentFilename;
+    displaySequence(JSON.stringify(SequencerExample.assessment));
+    document.getElementById("example-question-prompt").textContent = SequencerExample.prompt;
+    document.getElementById("example-student-notice").hidden = false;
+    document.getElementById("studentFileStatus").textContent = "Built-in example assessment loaded";
+}
 
 function loadFile(event) {
     const file = event.target.files[0];

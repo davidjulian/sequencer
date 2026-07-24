@@ -371,6 +371,21 @@
         return `${files.length} files selected`;
     }
 
+    function selectFiles(inputId, dropZoneId, files) {
+        const input = document.getElementById(inputId);
+        const dropZone = document.getElementById(dropZoneId);
+        const fileArray = Array.from(files || []);
+
+        if (!input || !dropZone) {
+            return false;
+        }
+
+        applySelectedFiles(input, fileArray);
+        setDropZoneStatus(dropZone, fileArray.length > 0 ? formatFileStatus(fileArray) : "No file selected");
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+    }
+
     function clearFileSelection(inputId, dropZoneId, emptyStatus) {
         const input = document.getElementById(inputId);
         const dropZone = document.getElementById(dropZoneId);
@@ -392,6 +407,7 @@
         getSelectedFiles,
         openAboutDialog,
         openTermsDialog,
+        selectFiles,
         setupDropZone
     };
 })(typeof globalThis !== "undefined" ? globalThis : this);
