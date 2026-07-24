@@ -329,45 +329,6 @@
         return sequence.filter(item => !fixedElements.has(item));
     }
 
-    function calculateAdjacentPairScore(reference, sequence) {
-        const maxPoints = Math.max(reference.length - 1, 0);
-
-        if (maxPoints === 0) {
-            const isExactMatch = reference.length === sequence.length && reference.every((item, index) => item === sequence[index]);
-            const score = isExactMatch ? 100 : 0;
-            return {
-                points: 0,
-                maxPoints,
-                adjacentPairScore: score
-            };
-        }
-
-        const referencePairs = new Set(extractAdjacentPairs(reference).map(([first, second]) => pairKey(first, second)));
-        let points = 0;
-
-        extractAdjacentPairs(sequence).forEach(([first, second]) => {
-            if (referencePairs.has(pairKey(first, second))) {
-                points++;
-                return;
-            }
-
-            if (referencePairs.has(pairKey(second, first))) {
-                return;
-            }
-
-            points--;
-        });
-
-        const rawScore = ((points + maxPoints) / (2 * maxPoints)) * 100;
-        const score = Math.max(0, Math.min(100, rawScore));
-
-        return {
-            points,
-            maxPoints,
-            adjacentPairScore: score
-        };
-    }
-
     function calculatePrecedencePairScore(reference, sequence) {
         const totalPairs = reference.length * (reference.length - 1) / 2;
 
@@ -422,15 +383,6 @@
         return Number.isFinite(value) ? value / 100 : NaN;
     }
 
-    function clampUnitScore(value) {
-        return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : NaN;
-    }
-
-    function filterSequenceToItems(sequence, reference) {
-        const expectedItems = new Set(reference);
-        return sequence.filter(item => expectedItems.has(item));
-    }
-
     function calculateSelectionCounts(reference, sequence, distractors) {
         const expectedItems = new Set(reference);
         const distractorItems = new Set(distractors);
@@ -453,6 +405,7 @@
 
             return {
                 raw: 0,
+                total: totalPairs,
                 norm: isExactMatch ? 1 : 0
             };
         }
@@ -464,37 +417,8 @@
 
         return {
             raw,
+            total: totalPairs,
             norm: raw / totalPairs
-        };
-    }
-
-    function calculateLongestCommonSubsequenceScore(reference, sequence) {
-        if (reference.length === 0) {
-            return {
-                raw: 0,
-                norm: sequence.length === 0 ? 1 : 0
-            };
-        }
-
-        let previous = Array(sequence.length + 1).fill(0);
-
-        reference.forEach(referenceItem => {
-            const current = Array(sequence.length + 1).fill(0);
-
-            sequence.forEach((sequenceItem, sequenceIndex) => {
-                current[sequenceIndex + 1] = referenceItem === sequenceItem
-                    ? previous[sequenceIndex] + 1
-                    : Math.max(previous[sequenceIndex + 1], current[sequenceIndex]);
-            });
-
-            previous = current;
-        });
-
-        const raw = previous[sequence.length];
-
-        return {
-            raw,
-            norm: raw / reference.length
         };
     }
 
@@ -514,95 +438,6 @@
         };
     }
 
-    function calculateDamerauLevenshteinDistance(reference, sequence) {
-        const rows = Array.from({ length: reference.length + 1 }, () => Array(sequence.length + 1).fill(0));
-
-        for (let index = 0; index <= reference.length; index++) {
-            rows[index][0] = index;
-        }
-
-        for (let index = 0; index <= sequence.length; index++) {
-            rows[0][index] = index;
-        }
-
-        for (let referenceIndex = 1; referenceIndex <= reference.length; referenceIndex++) {
-            for (let sequenceIndex = 1; sequenceIndex <= sequence.length; sequenceIndex++) {
-                const substitutionCost = reference[referenceIndex - 1] === sequence[sequenceIndex - 1] ? 0 : 1;
-                let distance = Math.min(
-                    rows[referenceIndex - 1][sequenceIndex] + 1,
-                    rows[referenceIndex][sequenceIndex - 1] + 1,
-                    rows[referenceIndex - 1][sequenceIndex - 1] + substitutionCost
-                );
-
-                if (
-                    referenceIndex > 1
-                    && sequenceIndex > 1
-                    && reference[referenceIndex - 1] === sequence[sequenceIndex - 2]
-                    && reference[referenceIndex - 2] === sequence[sequenceIndex - 1]
-                ) {
-                    distance = Math.min(distance, rows[referenceIndex - 2][sequenceIndex - 2] + 1);
-                }
-
-                rows[referenceIndex][sequenceIndex] = distance;
-            }
-        }
-
-        return rows[reference.length][sequence.length];
-    }
-
-    function calculateEditDistanceScore(reference, sequence) {
-        const raw = calculateDamerauLevenshteinDistance(reference, sequence);
-        const denominator = Math.max(reference.length, sequence.length);
-
-        return {
-            raw,
-            norm: denominator === 0 ? 1 : clampUnitScore(1 - (raw / denominator))
-        };
-    }
-
-    function calculateInversionDistanceScore(reference, sequence) {
-        const totalPairs = reference.length * (reference.length - 1) / 2;
-
-        if (totalPairs === 0) {
-            const isExactMatch = reference.length === sequence.length
-                && reference.every((item, index) => item === sequence[index]);
-
-            return {
-                raw: 0,
-                norm: isExactMatch ? 1 : 0
-            };
-        }
-
-        const positions = new Map();
-        sequence.forEach((item, index) => {
-            if (!positions.has(item)) {
-                positions.set(item, index);
-            }
-        });
-
-        let raw = 0;
-
-        for (let firstIndex = 0; firstIndex < reference.length - 1; firstIndex++) {
-            for (let secondIndex = firstIndex + 1; secondIndex < reference.length; secondIndex++) {
-                const firstPosition = positions.get(reference[firstIndex]);
-                const secondPosition = positions.get(reference[secondIndex]);
-
-                if (
-                    Number.isInteger(firstPosition)
-                    && Number.isInteger(secondPosition)
-                    && firstPosition > secondPosition
-                ) {
-                    raw++;
-                }
-            }
-        }
-
-        return {
-            raw,
-            norm: clampUnitScore(1 - (raw / totalPairs))
-        };
-    }
-
     function calculatePairwiseRankingScore(reference, sequence) {
         const score = calculatePrecedencePairScore(reference, sequence);
 
@@ -613,76 +448,23 @@
         };
     }
 
-    function calculateCurrentSequencerScore(reference, sequence) {
-        const adjacentPairScore = calculateAdjacentPairScore(reference, sequence);
-        const precedencePairScore = calculatePrecedencePairScore(reference, sequence);
-        const weightedOrderScore = calculateWeightedOrderScore(adjacentPairScore.adjacentPairScore, precedencePairScore.score);
+    function calculateHybridLocalGlobalScore(reference, sequence) {
+        const adjacent = calculateAdjacentPairPreservationScore(reference, sequence);
+        const pairwise = calculatePairwiseRankingScore(reference, sequence);
 
         return {
-            raw: weightedOrderScore,
-            norm: percentToUnitScore(weightedOrderScore)
+            norm: (adjacent.norm + pairwise.norm) / 2
         };
     }
-
     const additionalScoringMethods = [
-        {
-            key: "sequencer_current",
-            rawField: "sequencer_current_raw",
-            normField: "sequencer_current_norm",
-            calculate: calculateCurrentSequencerScore
-        },
-        {
-            key: "adjacent_pairs",
-            rawField: "adjacent_pairs_raw",
-            normField: "adjacent_pairs_norm",
-            calculate: calculateAdjacentPairPreservationScore
-        },
-        {
-            key: "lcs",
-            rawField: "lcs_length",
-            normField: "lcs_norm",
-            calculate: calculateLongestCommonSubsequenceScore
-        },
-        {
-            key: "positional",
-            rawField: "positional_raw",
-            normField: "positional_norm",
-            calculate: calculatePositionalScore
-        },
-        {
-            key: "edit_distance",
-            rawField: "edit_distance_raw",
-            normField: "edit_distance_norm",
-            calculate: calculateEditDistanceScore
-        },
-        {
-            key: "swap_distance",
-            rawField: "inversion_count",
-            normField: "swap_distance_norm",
-            calculate: calculateInversionDistanceScore
-        },
-        {
-            key: "pairwise",
-            rawField: "pairwise_correct_raw",
-            totalField: "pairwise_total",
-            normField: "pairwise_norm",
-            calculate: calculatePairwiseRankingScore
-        }
+        { key: "adjacent_pair", rawField: "adjacent_pair_raw", totalField: "adjacent_pair_total", normField: "adjacent_pair_norm", calculate: calculateAdjacentPairPreservationScore },
+        { key: "positional", rawField: "positional_raw", normField: "positional_norm", calculate: calculatePositionalScore },
+        { key: "pairwise_relative_order", rawField: "pairwise_relative_order_raw", totalField: "pairwise_relative_order_total", normField: "pairwise_relative_order_norm", calculate: calculatePairwiseRankingScore }
     ];
 
     const additionalScoringVariants = [
-        {
-            key: "required_only",
-            suffix: "labeled_required_only",
-            prepareSequence: (sequence, reference) => filterSequenceToItems(sequence, reference)
-        },
-        {
-            key: "full_sequence",
-            suffix: "labeled_full_sequence",
-            prepareSequence: sequence => sequence
-        }
+        { key: "full_sequence", suffix: "labeled_full_sequence", prepareSequence: sequence => sequence }
     ];
-
     function isBetterScoringResult(candidate, currentBest) {
         if (!currentBest) {
             return true;
@@ -736,7 +518,9 @@
                 });
 
                 const suffix = variant.suffix;
-                output[`${method.rawField}_${suffix}`] = best.score.raw;
+                if (method.rawField) {
+                    output[`${method.rawField}_${suffix}`] = best.score.raw;
+                }
                 output[`${method.normField}_${suffix}`] = best.score.norm;
                 output[`${method.key}_best_reference_id_${suffix}`] = best.referenceId;
 
@@ -753,15 +537,28 @@
             });
         });
 
-        output.best_reference_id = output.sequencer_current_best_reference_id_labeled_full_sequence;
+        additionalScoringVariants.forEach(variant => {
+            const suffix = variant.suffix;
+            const adjacentKey = `adjacent_pair_${suffix}`;
+            const pairwiseKey = `pairwise_relative_order_${suffix}`;
+            const adjacent = bestReferenceScoreByMethod[adjacentKey];
+            const pairwise = bestReferenceScoreByMethod[pairwiseKey];
+            const hybridNorm = (adjacent.norm + pairwise.norm) / 2;
+            const hybridReferenceId = adjacent.referenceId === pairwise.referenceId
+                ? adjacent.referenceId
+                : `${adjacent.referenceId} / ${pairwise.referenceId}`;
+
+            output[`hybrid_local_global_norm_${suffix}`] = hybridNorm;
+            output[`hybrid_local_global_best_reference_id_${suffix}`] = hybridReferenceId;
+            bestReferenceScoreByMethod[`hybrid_local_global_${suffix}`] = {
+                referenceId: hybridReferenceId,
+                norm: hybridNorm
+            };
+        });
+
+        output.best_reference_id = output.hybrid_local_global_best_reference_id_labeled_full_sequence;
         output.best_reference_score_by_method = bestReferenceScoreByMethod;
         return output;
-    }
-
-    function calculateWeightedOrderScore(adjacentPairScore, precedenceScore) {
-        return Number.isFinite(precedenceScore)
-            ? (adjacentPairScore + precedenceScore) / 2
-            : NaN;
     }
 
     function analyzeSequence(referenceData, studentSequence) {
@@ -771,19 +568,19 @@
         const sequenceMiddle = stripFixedElements(sequence, reference.startingElements, reference.endingElements);
         const itemComparison = compareExpectedItems(referenceMiddle, sequenceMiddle);
         const selectionCounts = calculateSelectionCounts(referenceMiddle, sequenceMiddle, reference.distractors);
-        const adjacentPairScore = calculateAdjacentPairScore(referenceMiddle, sequenceMiddle);
-        const precedencePairScore = calculatePrecedencePairScore(referenceMiddle, sequenceMiddle);
-        const weightedOrderScore = calculateWeightedOrderScore(adjacentPairScore.adjacentPairScore, precedencePairScore.score);
         const additionalScoring = calculateAdditionalScoring(reference, sequenceMiddle);
+        const suffix = "labeled_full_sequence";
 
         return {
-            points: adjacentPairScore.points,
-            maxPoints: adjacentPairScore.maxPoints,
-            adjacentPairScore: adjacentPairScore.adjacentPairScore,
-            precedencePairsCorrect: precedencePairScore.correctPairs,
-            precedencePairsTotal: precedencePairScore.totalPairs,
-            precedenceScore: precedencePairScore.score,
-            weightedOrderScore,
+            positionalRaw: additionalScoring[`positional_raw_${suffix}`],
+            positionalScore: additionalScoring[`positional_norm_${suffix}`] * 100,
+            adjacentPairRaw: additionalScoring[`adjacent_pair_raw_${suffix}`],
+            adjacentPairTotal: Math.max(referenceMiddle.length - 1, 0),
+            adjacentPairScore: additionalScoring[`adjacent_pair_norm_${suffix}`] * 100,
+            pairwiseRelativeOrderRaw: additionalScoring[`pairwise_relative_order_raw_${suffix}`],
+            pairwiseRelativeOrderTotal: additionalScoring[`pairwise_relative_order_total_${suffix}`],
+            pairwiseRelativeOrderScore: additionalScoring[`pairwise_relative_order_norm_${suffix}`] * 100,
+            hybridLocalGlobalScore: additionalScoring[`hybrid_local_global_norm_${suffix}`] * 100,
             itemComparison,
             selectionCounts,
             ...selectionCounts,
@@ -1705,8 +1502,10 @@
             scoreSummary: {
                 adjacentMean: calculateMean(scores.map(score => score.adjacentPairScore)),
                 adjacentMedian: calculateMedian(scores.map(score => score.adjacentPairScore)),
-                precedenceMean: calculateMean(scores.map(score => score.precedenceScore)),
-                precedenceMedian: calculateMedian(scores.map(score => score.precedenceScore)),
+                hybridMean: calculateMean(scores.map(score => score.hybridLocalGlobalScore)),
+                hybridMedian: calculateMedian(scores.map(score => score.hybridLocalGlobalScore)),
+                pairwiseMean: calculateMean(scores.map(score => score.pairwiseRelativeOrderScore)),
+                pairwiseMedian: calculateMedian(scores.map(score => score.pairwiseRelativeOrderScore)),
                 submissionsWithMissingItems: scores.filter(score => score.itemComparison.missingCount > 0).length,
                 submissionsWithExtraItems: scores.filter(score => score.itemComparison.extraCount > 0).length,
                 submissionsWithDuplicateItems: scores.filter(score => score.itemComparison.duplicateCount > 0).length
@@ -1721,12 +1520,8 @@
     return {
         analyzeClass,
         analyzeSequence,
-        calculateAdjacentPairScore,
         calculateAdjacentPairPreservationScore,
-        calculateDamerauLevenshteinDistance,
-        calculateEditDistanceScore,
-        calculateInversionDistanceScore,
-        calculateLongestCommonSubsequenceScore,
+        calculateHybridLocalGlobalScore,
         calculatePairwiseRankingScore,
         calculatePrecedencePairScore,
         calculatePositionalScore,

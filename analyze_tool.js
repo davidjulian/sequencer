@@ -31,73 +31,23 @@ const reportSortState = {
     students: { key: "filename", direction: "asc" }
 };
 
-const SCORE_VARIANT_SUFFIXES = {
-    requiredOnly: "labeled_required_only",
-    fullSequence: "labeled_full_sequence"
-};
+const SCORE_VARIANT_SUFFIX = "labeled_full_sequence";
 
 const ADDITIONAL_SCORE_METHODS = [
-    {
-        label: "Current Sequencer",
-        rawField: "sequencer_current_raw",
-        normField: "sequencer_current_norm",
-        referenceField: "sequencer_current_best_reference_id"
-    },
-    {
-        label: "Adjacent Pairs",
-        rawField: "adjacent_pairs_raw",
-        normField: "adjacent_pairs_norm",
-        referenceField: "adjacent_pairs_best_reference_id"
-    },
-    {
-        label: "Longest Common Subsequence",
-        rawField: "lcs_length",
-        normField: "lcs_norm",
-        referenceField: "lcs_best_reference_id"
-    },
-    {
-        label: "Position",
-        rawField: "positional_raw",
-        normField: "positional_norm",
-        referenceField: "positional_best_reference_id"
-    },
-    {
-        label: "Edit Distance",
-        rawField: "edit_distance_raw",
-        normField: "edit_distance_norm",
-        referenceField: "edit_distance_best_reference_id"
-    },
-    {
-        label: "Adjacent Swaps",
-        rawField: "inversion_count",
-        normField: "swap_distance_norm",
-        referenceField: "swap_distance_best_reference_id"
-    },
-    {
-        label: "Pairwise Relative Order",
-        rawField: "pairwise_correct_raw",
-        totalField: "pairwise_total",
-        normField: "pairwise_norm",
-        referenceField: "pairwise_best_reference_id"
-    }
+    { label: "Positional", rawField: "positional_raw", normField: "positional_norm", referenceField: "positional_best_reference_id" },
+    { label: "Adjacent-Pair", rawField: "adjacent_pair_raw", totalField: "adjacent_pair_total", normField: "adjacent_pair_norm", referenceField: "adjacent_pair_best_reference_id" },
+    { label: "Pairwise Relative-Order", rawField: "pairwise_relative_order_raw", totalField: "pairwise_relative_order_total", normField: "pairwise_relative_order_norm", referenceField: "pairwise_relative_order_best_reference_id" },
+    { label: "Hybrid Local-Global", normField: "hybrid_local_global_norm", referenceField: "hybrid_local_global_best_reference_id" }
 ];
-
-const ADDITIONAL_SCORE_EXPORT_FIELDS = ADDITIONAL_SCORE_METHODS.flatMap(method => (
-    Object.values(SCORE_VARIANT_SUFFIXES).flatMap(suffix => {
-        const fields = [
-            `${method.rawField}_${suffix}`,
-            `${method.normField}_${suffix}`,
-            `${method.referenceField}_${suffix}`
-        ];
-
-        if (method.totalField) {
-            fields.splice(1, 0, `${method.totalField}_${suffix}`);
-        }
-
-        return fields;
-    })
-));
-
+const ADDITIONAL_SCORE_EXPORT_FIELDS = ADDITIONAL_SCORE_METHODS.flatMap(method => {
+    const fields = [
+        `${method.normField}_${SCORE_VARIANT_SUFFIX}`,
+        `${method.referenceField}_${SCORE_VARIANT_SUFFIX}`
+    ];
+    if (method.rawField) fields.unshift(`${method.rawField}_${SCORE_VARIANT_SUFFIX}`);
+    if (method.totalField) fields.splice(1, 0, `${method.totalField}_${SCORE_VARIANT_SUFFIX}`);
+    return fields;
+});
 document.addEventListener("DOMContentLoaded", function() {
     SequencerUI.setupDropZone({
         dropZoneId: "referenceFileDropZone",
@@ -571,10 +521,12 @@ function renderOverview() {
     const metrics = makeElement("div", "metric-grid");
     metrics.appendChild(createMetricCard("Valid submissions", classReport.submissionCount));
     metrics.appendChild(createMetricCard("Invalid files", invalidCount));
-    metrics.appendChild(createMetricCard("Mean precedence score", formatPercent(classReport.scoreSummary.precedenceMean)));
-    metrics.appendChild(createMetricCard("Median precedence score", formatPercent(classReport.scoreSummary.precedenceMedian)));
+    metrics.appendChild(createMetricCard("Mean pairwise relative-order score", formatPercent(classReport.scoreSummary.pairwiseMean)));
+    metrics.appendChild(createMetricCard("Median pairwise relative-order score", formatPercent(classReport.scoreSummary.pairwiseMedian)));
     metrics.appendChild(createMetricCard("Mean adjacent-pair score", formatPercent(classReport.scoreSummary.adjacentMean)));
     metrics.appendChild(createMetricCard("Median adjacent-pair score", formatPercent(classReport.scoreSummary.adjacentMedian)));
+    metrics.appendChild(createMetricCard("Mean hybrid local-global score", formatPercent(classReport.scoreSummary.hybridMean)));
+    metrics.appendChild(createMetricCard("Median hybrid local-global score", formatPercent(classReport.scoreSummary.hybridMedian)));
     metrics.appendChild(createMetricCard("Pairwise reversal baseline", formatPercent(classReport.overallRelationshipErrorRate)));
     panel.appendChild(metrics);
 
@@ -1790,9 +1742,10 @@ function renderStudentResults() {
                 ...studentMetadata,
                 status: "Error",
                 itemFlags: "",
+                positionalScore: NaN,
                 adjacentPairScore: NaN,
-                precedenceScore: NaN,
-                weightedOrderScore: NaN
+                pairwiseRelativeOrderScore: NaN,
+                hybridLocalGlobalScore: NaN
             };
         }
 
@@ -1801,9 +1754,10 @@ function renderStudentResults() {
             ...studentMetadata,
             status: "OK",
             itemFlags: formatItemFlags(fileResult.result.itemComparison),
+            positionalScore: fileResult.result.positionalScore,
             adjacentPairScore: fileResult.result.adjacentPairScore,
-            precedenceScore: fileResult.result.precedenceScore,
-            weightedOrderScore: fileResult.result.weightedOrderScore
+            pairwiseRelativeOrderScore: fileResult.result.pairwiseRelativeOrderScore,
+            hybridLocalGlobalScore: fileResult.result.hybridLocalGlobalScore
         };
     });
 
@@ -1840,19 +1794,24 @@ function renderStudentResults() {
                 render: row => row.itemFlags || "None"
             },
             {
+                label: "Positional Score",
+                sortKey: "positionalScore",
+                render: row => formatPercent(row.positionalScore)
+            },
+            {
                 label: "Adjacent Pair Score",
                 sortKey: "adjacentPairScore",
                 render: row => formatPercent(row.adjacentPairScore)
             },
             {
-                label: "Precedence Pair Score",
-                sortKey: "precedenceScore",
-                render: row => formatPercent(row.precedenceScore)
+                label: "Pairwise Relative-Order Score",
+                sortKey: "pairwiseRelativeOrderScore",
+                render: row => formatPercent(row.pairwiseRelativeOrderScore)
             },
             {
-                label: "Weighted Order Score",
-                sortKey: "weightedOrderScore",
-                render: row => formatPercent(row.weightedOrderScore)
+                label: "Hybrid Local-Global Score",
+                sortKey: "hybridLocalGlobalScore",
+                render: row => formatPercent(row.hybridLocalGlobalScore)
             },
             {
                 label: "Details",
@@ -1873,10 +1832,10 @@ function createStudentDetails(row) {
         const list = document.createElement("dl");
         [
             ["Item Flags", formatItemFlags(result.itemComparison)],
-            ["Points", `${result.points} / ${result.maxPoints}`],
+            ["Positional Score", `${formatPercent(result.positionalScore)} (${result.positionalRaw} / ${result.itemComparison.expectedCount})`],
             ["Adjacent Pair Score", formatPercent(result.adjacentPairScore)],
-            ["Precedence Pair Score", `${formatPercent(result.precedenceScore)} (${result.precedencePairsCorrect} / ${result.precedencePairsTotal})`],
-            ["Weighted Order Score", formatPercent(result.weightedOrderScore)]
+            ["Pairwise Relative-Order Score", `${formatPercent(result.pairwiseRelativeOrderScore)} (${result.pairwiseRelativeOrderRaw} / ${result.pairwiseRelativeOrderTotal})`],
+            ["Hybrid Local-Global Score", formatPercent(result.hybridLocalGlobalScore)]
         ].forEach(([term, description]) => {
             list.appendChild(makeElement("dt", "", term));
             list.appendChild(makeElement("dd", "", description));
@@ -1908,43 +1867,18 @@ function createSelectionCountsSummary(result) {
 
 function createAdditionalScoringTable(result) {
     const section = makeElement("section", "student-detail-section");
-    section.appendChild(makeElement("h4", "", "Additional Ordering Scores"));
+    section.appendChild(makeElement("h4", "", "Ordering Scores"));
     section.appendChild(createReportTable({
         rows: ADDITIONAL_SCORE_METHODS,
         columns: [
-            {
-                label: "Method",
-                render: method => method.label
-            },
-            {
-                label: "Required Raw",
-                render: method => formatScoreRaw(result, method, SCORE_VARIANT_SUFFIXES.requiredOnly)
-            },
-            {
-                label: "Required Norm",
-                render: method => formatUnitScore(result[`${method.normField}_${SCORE_VARIANT_SUFFIXES.requiredOnly}`])
-            },
-            {
-                label: "Full Raw",
-                render: method => formatScoreRaw(result, method, SCORE_VARIANT_SUFFIXES.fullSequence)
-            },
-            {
-                label: "Full Norm",
-                render: method => formatUnitScore(result[`${method.normField}_${SCORE_VARIANT_SUFFIXES.fullSequence}`])
-            },
-            {
-                label: "Best Ref",
-                render: method => {
-                    const requiredId = result[`${method.referenceField}_${SCORE_VARIANT_SUFFIXES.requiredOnly}`];
-                    const fullId = result[`${method.referenceField}_${SCORE_VARIANT_SUFFIXES.fullSequence}`];
-                    return requiredId === fullId ? requiredId : `${requiredId} / ${fullId}`;
-                }
-            }
+            { label: "Method", render: method => method.label },
+            { label: "Raw", render: method => method.rawField ? formatScoreRaw(result, method, SCORE_VARIANT_SUFFIX) : "--" },
+            { label: "Score", render: method => formatUnitScore(result[`${method.normField}_${SCORE_VARIANT_SUFFIX}`]) },
+            { label: "Best Reference", render: method => result[`${method.referenceField}_${SCORE_VARIANT_SUFFIX}`] || "" }
         ]
     }));
     return section;
 }
-
 function createReportTable(options) {
     const wrapper = makeElement("div", "table-scroll");
     const table = makeElement("table", "report-table");
@@ -2261,13 +2195,13 @@ function convertResultToRow(fileResult) {
             extraItems: "",
             duplicateCount: "",
             duplicateItems: "",
-            points: "",
-            maxPoints: "",
+            positionalRaw: "",
+            positionalScore: "",
             adjacentPairScore: "",
-            precedencePairsCorrect: "",
-            precedencePairsTotal: "",
-            precedenceScore: "",
-            weightedOrderScore: "",
+            pairwiseRelativeOrderRaw: "",
+            pairwiseRelativeOrderTotal: "",
+            pairwiseRelativeOrderScore: "",
+            hybridLocalGlobalScore: "",
             required_present_count: "",
             required_omitted_count: "",
             distractor_included_count: "",
@@ -2295,13 +2229,13 @@ function convertResultToRow(fileResult) {
         extraItems: itemComparison.extraItems.join("; "),
         duplicateCount: itemComparison.duplicateCount,
         duplicateItems: itemComparison.duplicateItems.join("; "),
-        points: result.points,
-        maxPoints: result.maxPoints,
+        positionalRaw: result.positionalRaw,
+        positionalScore: SequencerCore.formatNumber(result.positionalScore),
         adjacentPairScore: SequencerCore.formatNumber(result.adjacentPairScore),
-        precedencePairsCorrect: result.precedencePairsCorrect,
-        precedencePairsTotal: result.precedencePairsTotal,
-        precedenceScore: SequencerCore.formatNumber(result.precedenceScore),
-        weightedOrderScore: SequencerCore.formatNumber(result.weightedOrderScore),
+        pairwiseRelativeOrderRaw: result.pairwiseRelativeOrderRaw,
+        pairwiseRelativeOrderTotal: result.pairwiseRelativeOrderTotal,
+        pairwiseRelativeOrderScore: SequencerCore.formatNumber(result.pairwiseRelativeOrderScore),
+        hybridLocalGlobalScore: SequencerCore.formatNumber(result.hybridLocalGlobalScore),
         required_present_count: result.required_present_count,
         required_omitted_count: result.required_omitted_count,
         distractor_included_count: result.distractor_included_count,
@@ -2364,10 +2298,12 @@ function createOverviewExportRows() {
         { metric: "Broad sequence confusion ranges", value: classReport.broadSequenceConfusion.length },
         { metric: "Isolated relationship errors", value: classReport.isolatedRelationshipErrors.length },
         { metric: "Relationship reporting threshold", value: `${classReport.relationshipErrorThreshold}%` },
-        { metric: "Mean precedence pair score", value: SequencerCore.formatNumber(summary.precedenceMean) },
-        { metric: "Median precedence pair score", value: SequencerCore.formatNumber(summary.precedenceMedian) },
+        { metric: "Mean pairwise relative-order score", value: SequencerCore.formatNumber(summary.pairwiseMean) },
+        { metric: "Median pairwise relative-order score", value: SequencerCore.formatNumber(summary.pairwiseMedian) },
         { metric: "Mean adjacent pair score", value: SequencerCore.formatNumber(summary.adjacentMean) },
         { metric: "Median adjacent pair score", value: SequencerCore.formatNumber(summary.adjacentMedian) },
+        { metric: "Mean hybrid local-global score", value: SequencerCore.formatNumber(summary.hybridMean) },
+        { metric: "Median hybrid local-global score", value: SequencerCore.formatNumber(summary.hybridMedian) },
         { metric: "Submissions with missing elements", value: summary.submissionsWithMissingItems },
         { metric: "Submissions with extra elements", value: summary.submissionsWithExtraItems },
         { metric: "Submissions with duplicate elements", value: summary.submissionsWithDuplicateItems }
