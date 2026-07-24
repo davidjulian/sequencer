@@ -51,6 +51,24 @@
         }
     });
 
+    const syntheticLmsIds = [
+        "5831047", "7264915", "3148572", "8652039", "4927168",
+        "6379041", "2516837", "9483156", "7058423", "3691274",
+        "8145962", "5274308", "1937685", "6824519", "4562093",
+        "9715346", "2386491", "7431850", "6059274", "3874162"
+    ];
+    const students = responses.map((response, index) => {
+        const studentNumber = String(index + 1).padStart(2, "0");
+        const name = `Synthetic Student ${studentNumber}`;
+        const lmsId = syntheticLmsIds[index];
+
+        return {
+            name,
+            lmsId,
+            filename: `Synthetic_Student_${studentNumber}_${lmsId}.seq`,
+            response
+        };
+    });
     root.SequencerExample = Object.freeze({
         title: "Insulin response to increased blood glucose",
         prompt: "Arrange the events involved in the response to increased blood glucose. One event does not belong in the sequence.",
@@ -59,6 +77,7 @@
         reference,
         assessment,
         responses,
+        students,
         distractor,
         requiredEvents: [...requiredEvents]
     });

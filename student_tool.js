@@ -20,8 +20,6 @@ function loadExampleAssessment() {
 
     globalFileName = SequencerExample.assessmentFilename;
     displaySequence(JSON.stringify(SequencerExample.assessment));
-    document.getElementById("example-question-prompt").textContent = SequencerExample.prompt;
-    document.getElementById("example-student-notice").hidden = false;
     document.getElementById("studentFileStatus").textContent = "Built-in example assessment loaded";
 }
 

@@ -153,8 +153,8 @@ async function loadExampleDataset() {
 
     try {
         const referenceFile = createExampleFile(SequencerExample.reference, SequencerExample.referenceFilename);
-        const studentFiles = SequencerExample.responses.map((response, index) => (
-            createExampleFile(response, `synthetic_student_${String(index + 1).padStart(2, "0")}.seq`)
+        const studentFiles = SequencerExample.students.map(student => (
+            createExampleFile(student.response, student.filename)
         ));
 
         SequencerUI.selectFiles("reference-file", "referenceFileDropZone", [referenceFile]);
@@ -182,10 +182,10 @@ async function downloadExampleFiles() {
     zip.file(SequencerExample.assessmentFilename, JSON.stringify(SequencerExample.assessment, null, 2));
 
     const responseFolder = zip.folder("synthetic_student_responses");
-    SequencerExample.responses.forEach((response, index) => {
+    SequencerExample.students.forEach(student => {
         responseFolder.file(
-            `synthetic_student_${String(index + 1).padStart(2, "0")}.seq`,
-            JSON.stringify(response, null, 2)
+            student.filename,
+            JSON.stringify(student.response, null, 2)
         );
     });
 
@@ -501,7 +501,7 @@ function parseStudentFilename(filename) {
     if (!match) {
         return {
             studentName: "",
-            canvasId: ""
+            lmsId: ""
         };
     }
 
@@ -511,7 +511,7 @@ function parseStudentFilename(filename) {
             .replace(/\s+/g, " ")
             .replace(/[\s_-]+$/g, "")
             .trim(),
-        canvasId: match[2]
+        lmsId: match[2]
     };
 }
 
@@ -1861,9 +1861,9 @@ function renderStudentResults() {
                 render: row => row.studentName || ""
             },
             {
-                label: "Canvas ID",
-                sortKey: "canvasId",
-                render: row => row.canvasId || ""
+                label: "LMS ID",
+                sortKey: "lmsId",
+                render: row => row.lmsId || ""
             },
             {
                 label: "Filename",
@@ -2269,7 +2269,7 @@ function convertResultToRow(fileResult) {
     if (fileResult.error) {
         return {
             studentName: studentMetadata.studentName,
-            canvasId: studentMetadata.canvasId,
+            lmsId: studentMetadata.lmsId,
             filename: fileResult.filename,
             status: "Error",
             error: fileResult.error,
@@ -2303,7 +2303,7 @@ function convertResultToRow(fileResult) {
     const itemComparison = result.itemComparison;
     return {
         studentName: studentMetadata.studentName,
-        canvasId: studentMetadata.canvasId,
+        lmsId: studentMetadata.lmsId,
         filename: fileResult.filename,
         status: "OK",
         error: "",
