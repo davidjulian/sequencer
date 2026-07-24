@@ -3,10 +3,35 @@
 
     const selectedFileStore = new WeakMap();
 
-    function getScoringAboutText() {
+    function getScoringAboutSections() {
         return [
-            "Answers can receive partial credit. The scoring algorithm analyzes adjacent-pair accuracy and element order precedence to summarize overall order.",
-            "Class reports identify recurring sequence-ordering segments and relationship errors. Files with missing, extra, or duplicated elements are flagged separately."
+            {
+                heading: "Partial-credit scores",
+                paragraphs: [
+                    "Sequencer reports four partial-credit scores. Fixed starting and ending events are removed before scores are calculated.",
+                    "Positional measures how many required events occupy their reference positions. Adjacent-Pair measures how many neighboring pairs from the reference remain together and in the correct order. Pairwise Relative-Order measures how many pairs of required events appear in the correct relative order. Hybrid Local-Global is the average of the Adjacent-Pair and Pairwise Relative-Order scores."
+                ]
+            },
+            {
+                heading: "Incomplete or extended responses",
+                paragraphs: [
+                    "Score denominators are based on the required events in the reference sequence. They do not change when a response contains omissions, duplicates, distractors, unrecognized events, or a different number of events.",
+                    "Distractors and other inserted events can shift positional matches and can interrupt adjacent pairs, but they do not directly change the relative order of required-event pairs. An omitted event receives no positional credit and causes every adjacent or pairwise relationship involving that event to receive no credit."
+                ]
+            },
+            {
+                heading: "Duplicates and alternative references",
+                paragraphs: [
+                    "Duplicates are flagged separately. All submitted positions are retained for Positional scoring; a reference adjacent pair can receive credit at most once; and Pairwise Relative-Order uses the first occurrence of each required event.",
+                    "When multiple reference sequences are accepted, the Positional, Adjacent-Pair, and Pairwise Relative-Order scores are each calculated against every reference, and the highest score for each method is retained. Different references may therefore maximize different methods. The Hybrid Local-Global score is calculated from the retained Adjacent-Pair and Pairwise Relative-Order scores."
+                ]
+            },
+            {
+                heading: "Class reports",
+                paragraphs: [
+                    "Class reports summarize score distributions and identify recurring sequence segments and relationship errors. Missing, extra, duplicated, and retained distractor events are also reported."
+                ]
+            }
         ];
     }
 
@@ -29,10 +54,16 @@
         const content = document.createElement("div");
         content.className = "about-dialog-content";
 
-        getScoringAboutText().forEach(text => {
-            const paragraph = document.createElement("p");
-            paragraph.textContent = text;
-            content.appendChild(paragraph);
+        getScoringAboutSections().forEach(section => {
+            const heading = document.createElement("h3");
+            heading.textContent = section.heading;
+            content.appendChild(heading);
+
+            section.paragraphs.forEach(text => {
+                const paragraph = document.createElement("p");
+                paragraph.textContent = text;
+                content.appendChild(paragraph);
+            });
         });
 
         const closeButton = document.createElement("button");

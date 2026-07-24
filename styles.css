@@ -898,7 +898,22 @@ button:focus-visible,
 }
 
 .about-dialog-content {
+    max-height: min(65vh, 620px);
     margin-bottom: 16px;
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+.about-dialog-content h3 {
+    margin: 18px 0 6px;
+}
+
+.about-dialog-content h3:first-child {
+    margin-top: 0;
+}
+
+.about-dialog-content p {
+    margin: 0 0 10px;
 }
 
 .terms-dialog {
