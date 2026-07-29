@@ -31,6 +31,12 @@
                 paragraphs: [
                     "Class reports summarize score distributions and identify recurring sequence segments and relationship errors. Missing, extra, duplicated, and retained distractor events are also reported."
                 ]
+            },
+            {
+                heading: "Development",
+                paragraphs: [
+                    "Sequencer was conceived and directed by David Julian at the University of Florida. Development was supported by OpenAI Codex, which assisted with implementation, testing, debugging, and interface refinement. All design decisions and responsibility for the application remain with the author."
+                ]
             }
         ];
     }
@@ -48,7 +54,7 @@
 
         const title = document.createElement("h2");
         title.id = "aboutDialogTitle";
-        title.textContent = "About Sequencer Scoring";
+        title.textContent = "About Sequencer";
         dialog.setAttribute("aria-labelledby", title.id);
 
         const content = document.createElement("div");
